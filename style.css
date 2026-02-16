@@ -1,0 +1,727 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.container {
+    position: relative;
+    /* 子要素（戻るボタンなど）の基準にする */
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 30px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 1200px;
+    width: 100%;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.header h1 {
+    color: #667eea;
+    font-size: 2.5em;
+    margin-bottom: 10px;
+}
+
+.header p {
+    color: #666;
+    font-size: 1.2em;
+}
+
+.practice-area {
+    background: #f8f9ff;
+    border-radius: 20px;
+    padding: 30px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.target-text {
+    font-size: 3em;
+    color: #333;
+    margin-bottom: 20px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+}
+
+.current-key {
+    display: inline-block;
+    color: #667eea;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.2);
+    }
+}
+
+.instruction {
+    font-size: 1.5em;
+    color: #764ba2;
+    margin-top: 20px;
+}
+
+.keyboard {
+    background-color: #e2e8f0;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow:
+        0 10px 25px rgba(0, 0, 0, 0.1),
+        inset 0 2px 5px rgba(255, 255, 255, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 30px;
+    max-width: 900px;
+    /* 幅を広げて記号キーが入るようにする */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.keyboard-row {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+}
+
+.key {
+    width: 50px;
+    height: 50px;
+    background: white;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    font-size: 1.2em;
+    color: #4a5568;
+    box-shadow:
+        0 4px 0 #cbd5e0,
+        0 4px 8px rgba(0, 0, 0, 0.1);
+    transition: all 0.1s;
+    position: relative;
+    cursor: pointer;
+}
+
+.key.wide {
+    width: 80px;
+    /* Shiftキーなどは幅を広く */
+    font-size: 0.9em;
+}
+
+.key:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 左手のキー（ピンク系） */
+.key.left-hand {
+    background: linear-gradient(135deg, #ffeef8 0%, #ffe0f0 100%);
+    border-color: #ffb3d9;
+}
+
+/* 右手のキー（ブルー系） */
+.key.right-hand {
+    background: linear-gradient(135deg, #e0f0ff 0%, #d0e8ff 100%);
+    border-color: #99ccff;
+}
+
+/* ホームポジション（濃い色） */
+.key.home-position {
+    font-weight: 900;
+    font-size: 1.5em;
+}
+
+.key.left-hand.home-position {
+    background: linear-gradient(135deg, #ffd4e8 0%, #ffb3d9 100%);
+    border-color: #ff80bf;
+}
+
+.key.right-hand.home-position {
+    background: linear-gradient(135deg, #b3d9ff 0%, #99ccff 100%);
+    border-color: #66b3ff;
+}
+
+/* アクティブなキー */
+.key.active {
+    transform: scale(1.15);
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.6);
+    animation: glow 0.5s ease-in-out infinite alternate;
+}
+
+.key.left-hand.active {
+    background: linear-gradient(135deg, #ff99cc 0%, #ff66b3 100%);
+    border-color: #ff3399;
+    color: white;
+}
+
+.key.right-hand.active {
+    background: linear-gradient(135deg, #66b3ff 0%, #3399ff 100%);
+    border-color: #0080ff;
+    color: white;
+}
+
+@keyframes glow {
+    from {
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
+    }
+
+    to {
+        box-shadow: 0 0 40px rgba(102, 126, 234, 0.9);
+    }
+}
+
+/* スペースキー */
+.key.space {
+    min-width: 400px;
+    background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+}
+
+.key.space.active {
+    background: linear-gradient(135deg, #b3b3ff 0%, #8080ff 100%);
+    color: white;
+}
+
+/* 特殊キー */
+.key.special {
+    background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+    font-size: 0.9em;
+}
+
+.hand-guide {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    margin: 30px 0;
+    padding: 20px;
+    background: white;
+    border-radius: 15px;
+}
+
+.hand {
+    text-align: center;
+}
+
+.hand-icon {
+    font-size: 4em;
+    margin-bottom: 10px;
+}
+
+.hand.left .hand-icon {
+    color: #ff66b3;
+}
+
+.hand.right .hand-icon {
+    color: #3399ff;
+}
+
+.hand-label {
+    font-size: 1.3em;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.hand.left .hand-label {
+    color: #ff66b3;
+}
+
+.hand.right .hand-label {
+    color: #3399ff;
+}
+
+.finger-guide {
+    font-size: 1em;
+    color: #666;
+    line-height: 1.6;
+}
+
+.stats {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8f9ff;
+    border-radius: 15px;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2.5em;
+    font-weight: bold;
+    color: #667eea;
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    font-size: 1.1em;
+    color: #666;
+}
+
+.success-message {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 40px 60px;
+    border-radius: 20px;
+    font-size: 2em;
+    font-weight: bold;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    transition: transform 0.3s ease;
+}
+
+.success-message.show {
+    transform: translate(-50%, -50%) scale(1);
+}
+
+/* レベル選択画面 */
+.level-selection {
+    text-align: center;
+}
+
+.level-selection h2 {
+    color: #667eea;
+    font-size: 2em;
+    margin-bottom: 30px;
+}
+
+.level-selection h3 {
+    color: #764ba2;
+    font-size: 1.5em;
+    margin: 30px 0 20px 0;
+}
+
+/* モードボタン */
+.mode-buttons {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.mode-btn {
+    background: linear-gradient(135deg, #f8f9ff 0%, #e8ecff 100%);
+    border: 3px solid #667eea;
+    border-radius: 20px;
+    padding: 40px 50px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 250px;
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.2);
+}
+
+.mode-btn:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 30px rgba(102, 126, 234, 0.3);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.mode-btn:hover .mode-icon {
+    transform: scale(1.2);
+}
+
+.mode-btn:hover .mode-title,
+.mode-btn:hover .mode-desc {
+    color: white;
+}
+
+.mode-icon {
+    font-size: 4em;
+    margin-bottom: 15px;
+    transition: transform 0.3s ease;
+}
+
+.mode-title {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #667eea;
+    margin-bottom: 10px;
+}
+
+.mode-desc {
+    font-size: 1.1em;
+    color: #666;
+}
+
+/* レベルボタン */
+.level-buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.level-btn {
+    background: white;
+    border: 3px solid #ddd;
+    border-radius: 15px;
+    padding: 30px 40px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 200px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.level-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.level-btn.easy {
+    border-color: #66cc66;
+}
+
+.level-btn.easy:hover {
+    background: linear-gradient(135deg, #66cc66 0%, #44aa44 100%);
+    color: white;
+}
+
+.level-btn.medium {
+    border-color: #ffaa33;
+}
+
+.level-btn.medium:hover {
+    background: linear-gradient(135deg, #ffaa33 0%, #ff8800 100%);
+    color: white;
+}
+
+.level-btn.hard {
+    border-color: #ff6666;
+}
+
+.level-btn.hard:hover {
+    background: linear-gradient(135deg, #ff6666 0%, #ff3333 100%);
+    color: white;
+}
+
+.level-icon {
+    font-size: 3em;
+    margin-bottom: 10px;
+}
+
+.level-title {
+    font-size: 1.3em;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+.level-desc {
+    font-size: 1em;
+    color: #666;
+}
+
+.level-btn:hover .level-desc {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* 音声トグル */
+.settings {
+    margin-top: 40px;
+    display: flex;
+    justify-content: center;
+}
+
+.sound-toggle {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    cursor: pointer;
+    font-size: 1.3em;
+    color: #667eea;
+    font-weight: bold;
+}
+
+.sound-toggle input[type="checkbox"] {
+    display: none;
+}
+
+.toggle-slider {
+    width: 60px;
+    height: 30px;
+    background: #ccc;
+    border-radius: 15px;
+    position: relative;
+    transition: background 0.3s ease;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    top: 3px;
+    left: 3px;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.sound-toggle input[type="checkbox"]:checked+.toggle-slider {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.sound-toggle input[type="checkbox"]:checked+.toggle-slider::before {
+    transform: translateX(30px);
+}
+
+/* 練習画面 */
+.practice-screen {
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.practice-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    color: #666;
+    z-index: 100;
+}
+
+.back-btn:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: #667eea;
+    transform: translateX(-3px);
+}
+
+.current-mode {
+    font-size: 1.3em;
+    font-weight: bold;
+    color: #667eea;
+}
+
+/* タイマーとスコア表示 */
+.timer-score-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.timer-display {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #667eea;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #f8f9ff 0%, #e8ecff 100%);
+    border-radius: 15px;
+    border: 3px solid #667eea;
+    box-shadow: 0 4px 10px rgba(102, 126, 234, 0.2);
+}
+
+.high-score-display {
+    font-size: 1.1em;
+    color: #ff6666;
+    font-weight: bold;
+    padding: 5px 15px;
+    background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%);
+    border-radius: 10px;
+    border: 2px solid #ff6666;
+}
+
+/* 結果画面 */
+.result-message {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    animation: fadeIn 0.3s ease;
+}
+
+.result-content {
+    background: white;
+    border-radius: 30px;
+    padding: 50px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    max-width: 500px;
+    animation: slideUp 0.5s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.result-content h2 {
+    color: #667eea;
+    font-size: 2.5em;
+    margin-bottom: 30px;
+}
+
+.result-score {
+    margin: 30px 0;
+}
+
+.score-label {
+    font-size: 1.3em;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.score-value {
+    font-size: 5em;
+    font-weight: bold;
+    color: #667eea;
+    margin: 10px 0;
+    text-shadow: 2px 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+.score-unit {
+    font-size: 1.5em;
+    color: #666;
+}
+
+.new-record-badge {
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+    color: #ff6600;
+    font-size: 1.8em;
+    font-weight: bold;
+    padding: 15px 30px;
+    border-radius: 20px;
+    margin: 20px 0;
+    box-shadow: 0 8px 20px rgba(255, 215, 0, 0.4);
+    animation: bounce 0.5s ease infinite alternate;
+}
+
+@keyframes bounce {
+    from {
+        transform: translateY(0);
+    }
+
+    to {
+        transform: translateY(-10px);
+    }
+}
+
+.result-buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 30px;
+}
+
+.result-btn {
+    padding: 15px 30px;
+    font-size: 1.2em;
+    font-weight: bold;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.retry-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.retry-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+.menu-btn {
+    background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+    color: #666;
+}
+
+.menu-btn:hover {
+    background: linear-gradient(135deg, #e8e8e8 0%, #d8d8d8 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.history-btn {
+    background: linear-gradient(135deg, #4fd1c5 0%, #38b2ac 100%);
+    color: white;
+    width: 100%;
+    max-width: 400px;
+    padding: 16px;
+    border-radius: 15px;
+    font-weight: bold;
+    font-size: 1.1em;
+    border: none;
+    box-shadow: 0 6px 15px rgba(56, 178, 172, 0.3);
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.history-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(56, 178, 172, 0.5);
+    background: linear-gradient(135deg, #4fd1c5 0%, #319795 100%);
+}

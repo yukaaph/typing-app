@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>やさしいタイピング練習</title>
+    <meta name="description" content="初心者向けのタイピング練習アプリ。手の位置とキーボードの位置が分かりやすく表示されます。">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✨ やさしいタイピング練習 ✨</h1>
+            <p>ゆっくり、楽しく練習しましょう</p>
+        </div>
+
+        <!-- レベル選択画面 -->
+        <div class="level-selection" id="levelSelection">
+            <h2>練習モードを選んでください</h2>
+
+            <div class="mode-buttons">
+                <button class="mode-btn" onclick="selectMode('single')">
+                    <div class="mode-icon">🔤</div>
+                    <div class="mode-title">1文字ずつ練習</div>
+                    <div class="mode-desc">キーの位置を覚えましょう</div>
+                </button>
+                <button class="mode-btn" onclick="selectMode('word')">
+                    <div class="mode-icon">📝</div>
+                    <div class="mode-title">単語で練習</div>
+                    <div class="mode-desc">日本語の単語をローマ字で入力</div>
+                </button>
+            </div>
+
+            <div class="review-area" style="text-align: center; margin-top: 20px;">
+                <button class="menu-btn review-btn disabled" id="reviewBtn" onclick="startReview()" disabled
+                    style="background-color: #cbd5e0; color: #718096; cursor: not-allowed; width: 100%; max-width: 400px; padding: 15px; border-radius: 15px; font-weight: bold; font-size: 1.1em; border: none; box-shadow: none;">
+                    🔄 復習するボタンがここに表示されます
+                </button>
+            </div>
+
+            <div class="history-area" style="text-align: center; margin-top: 25px; margin-bottom: 20px;">
+                <button class="menu-btn history-btn" onclick="showHistory()">
+                    <span style="font-size: 1.3em;">📊</span>
+                    <span>プレイ履歴を確認する</span>
+                </button>
+            </div>
+
+
+            <div id="historyScreen" style="display: none; text-align: center;">
+                <h2 style="color: #2d3748; margin-bottom: 20px;">📊 プレイ履歴</h2>
+
+                <div class="history-scroll-area"
+                    style="max-height: 400px; overflow-y: auto; background: white; border-radius: 10px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.06); padding: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                        <thead style="background-color: #f7fafc; border-bottom: 2px solid #e2e8f0;">
+                            <tr>
+                                <th style="padding: 10px; color: #4a5568;">日時</th>
+                                <th style="padding: 10px; color: #4a5568;">モード</th>
+                                <th style="padding: 10px; color: #4a5568;">スコア</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyListBody">
+                            <!-- ここに履歴が追加されます -->
+                        </tbody>
+                    </table>
+                    <div id="noHistoryMsg" style="padding: 20px; color: #a0aec0; display: none;">履歴がまだありません</div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button onclick="closeHistory()"
+                        style="background-color: #718096; color: white; padding: 10px 30px; border-radius: 20px; border: none; cursor: pointer;">閉じる</button>
+                    <button onclick="clearHistory()"
+                        style="background-color: transparent; color: #fc8181; border: 1px solid #fc8181; padding: 8px 15px; border-radius: 15px; cursor: pointer; margin-left: 10px; font-size: 0.8em;">履歴を消去</button>
+                </div>
+            </div>
+
+            <div class="level-buttons" id="levelButtons" style="display: none;">
+                <button class="back-btn" onclick="backToMenu()">← メニューに戻る</button>
+                <h3>難易度を選んでください</h3>
+                <button class="level-btn easy" onclick="startPractice('easy')">
+                    <div class="level-icon">🌱</div>
+                    <div class="level-title">やさしい</div>
+                    <div class="level-desc">ホームポジション中心</div>
+                </button>
+                <button class="level-btn medium" onclick="startPractice('medium')">
+                    <div class="level-icon">🌿</div>
+                    <div class="level-title">ふつう</div>
+                    <div class="level-desc">よく使うキー</div>
+                </button>
+                <button class="level-btn hard" onclick="startPractice('hard')">
+                    <div class="level-icon">🌳</div>
+                    <div class="level-title">むずかしい</div>
+                    <div class="level-desc">すべてのキー</div>
+                </button>
+            </div>
+
+            <div class="settings">
+                <label class="sound-toggle">
+                    <input type="checkbox" id="soundToggle" checked>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">🔊 効果音</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- 練習画面 -->
+        <div class="practice-screen" id="practiceScreen" style="display: none;">
+            <div class="practice-header">
+                <button class="back-btn" onclick="backToMenu()">← メニューに戻る</button>
+                <div class="timer-score-container">
+                    <div class="timer-display" id="timerDisplay">残り時間: 60秒</div>
+                    <div class="high-score-display" id="highScoreDisplay">最高記録: 0回</div>
+                </div>
+                <div class="current-mode" id="currentMode"></div>
+            </div>
+
+            <div class="practice-area">
+                <div class="target-text">
+                    <span id="targetKey" class="current-key">A</span>
+                </div>
+                <div class="instruction" id="instruction">
+                    左手の小指で「A」を押してください
+                </div>
+            </div>
+
+            <div class="hand-guide">
+                <div class="hand left">
+                    <div class="hand-icon">🤚</div>
+                    <div class="hand-label">左手（ピンク色）</div>
+                    <div class="finger-guide">
+                        小指: A Q Z<br>
+                        薬指: S W X<br>
+                        中指: D E C<br>
+                        人差し指: F R V G T B
+                    </div>
+                </div>
+                <div class="hand right">
+                    <div class="hand-icon">🖐️</div>
+                    <div class="hand-label">右手（青色）</div>
+                    <div class="finger-guide">
+                        人差し指: J U N H Y M<br>
+                        中指: K I ,<br>
+                        薬指: L O .<br>
+                        小指: ; P /
+                    </div>
+                </div>
+            </div>
+
+            <div class="keyboard">
+                <div class="keyboard-row">
+                    <div class="key left-hand" data-key="1">1</div>
+                    <div class="key left-hand" data-key="2">2</div>
+                    <div class="key left-hand" data-key="3">3</div>
+                    <div class="key left-hand" data-key="4">4</div>
+                    <div class="key left-hand" data-key="5">5</div>
+                    <div class="key right-hand" data-key="6">6</div>
+                    <div class="key right-hand" data-key="7">7</div>
+                    <div class="key right-hand" data-key="8">8</div>
+                    <div class="key right-hand" data-key="9">9</div>
+                    <div class="key right-hand" data-key="0">0</div>
+                    <div class="key right-hand" data-key="-">-</div>
+                    <div class="key right-hand" data-key="^">^</div>
+                    <div class="key right-hand" data-key="¥">¥</div>
+                </div>
+                <div class="keyboard-row">
+                    <div class="key left-hand" data-key="Q">Q</div>
+                    <div class="key left-hand" data-key="W">W</div>
+                    <div class="key left-hand" data-key="E">E</div>
+                    <div class="key left-hand" data-key="R">R</div>
+                    <div class="key left-hand" data-key="T">T</div>
+                    <div class="key right-hand" data-key="Y">Y</div>
+                    <div class="key right-hand" data-key="U">U</div>
+                    <div class="key right-hand" data-key="I">I</div>
+                    <div class="key right-hand" data-key="O">O</div>
+                    <div class="key right-hand" data-key="P">P</div>
+                    <div class="key right-hand" data-key="@">@</div>
+                    <div class="key right-hand" data-key="[">[</div>
+                </div>
+                <div class="keyboard-row">
+                    <div class="key left-hand home-position" data-key="A">A</div>
+                    <div class="key left-hand home-position" data-key="S">S</div>
+                    <div class="key left-hand home-position" data-key="D">D</div>
+                    <div class="key left-hand home-position" data-key="F">F</div>
+                    <div class="key left-hand" data-key="G">G</div>
+                    <div class="key right-hand" data-key="H">H</div>
+                    <div class="key right-hand home-position" data-key="J">J</div>
+                    <div class="key right-hand home-position" data-key="K">K</div>
+                    <div class="key right-hand home-position" data-key="L">L</div>
+                    <div class="key right-hand home-position" data-key=";">;</div>
+                    <div class="key right-hand" data-key=":">:</div>
+                    <div class="key right-hand" data-key="]">]</div>
+                </div>
+                <div class="keyboard-row">
+                    <div class="key left-hand wide" data-key="ShiftL">Shift</div>
+                    <div class="key left-hand" data-key="Z">Z</div>
+                    <div class="key left-hand" data-key="X">X</div>
+                    <div class="key left-hand" data-key="C">C</div>
+                    <div class="key left-hand" data-key="V">V</div>
+                    <div class="key right-hand" data-key="B">B</div>
+                    <div class="key right-hand" data-key="N">N</div>
+                    <div class="key right-hand" data-key="M">M</div>
+                    <div class="key right-hand" data-key=",">,</div>
+                    <div class="key right-hand" data-key=".">.</div>
+                    <div class="key right-hand" data-key="/">/</div>
+                    <div class="key right-hand" data-key="\">_</div>
+                    <div class="key right-hand wide" data-key="ShiftR">Shift</div>
+                </div>
+                <div class="keyboard-row">
+                    <div class="key both-hand space-key" data-key=" " style="width: 300px;">Space</div>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="correctCount">0</div>
+                    <div class="stat-label">正解数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalCount">0</div>
+                    <div class="stat-label">練習回数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="accuracy">100%</div>
+                    <div class="stat-label">正確さ</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="success-message" id="successMessage">
+            🎉 素晴らしい! 🎉
+        </div>
+
+        <!-- 結果画面 -->
+        <div class="result-message" id="resultMessage" style="display: none;">
+            <div class="result-content">
+                <h2>⏰ 時間終了！</h2>
+                <div class="result-score">
+                    <div class="score-label">あなたのスコア</div>
+                    <div class="score-value" id="finalScore">0</div>
+                    <div class="score-unit">回</div>
+                </div>
+                <div class="new-record-badge" id="newRecordBadge" style="display: none;">
+                    🎊 新記録達成！ 🎊
+                </div>
+                <div class="result-buttons">
+                    <button class="result-btn retry-btn" onclick="retry()">もう一度挑戦</button>
+                    <button class="result-btn menu-btn" onclick="closeResult()">メニューに戻る</button>
+                </div>
+            </div>
+        </div>
+
+        <script src="script.js"></script>
+</body>
+
+</html>
