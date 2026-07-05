@@ -378,6 +378,79 @@
     return t ? t.name : '';
   }
 
+  function csvEscape(v) {
+    const s = String(v == null ? '' : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function nodePath(list, id) {
+    const map = {};
+    list.forEach((n) => { map[n.id] = n; });
+    const parts = [];
+    let cur = map[id];
+    while (cur) {
+      parts.unshift(cur.name);
+      cur = cur.parentId ? map[cur.parentId] : null;
+    }
+    return parts.join(' > ');
+  }
+
+  function buildCsvRows() {
+    const rows = [['分類', '項目', '内容']];
+    const c = state.contract;
+    rows.push(['契約情報', '契約ID', c.contractId]);
+    rows.push(['契約情報', '契約プラン', c.plan]);
+    rows.push(['契約情報', '契約開始日', c.startDate]);
+    rows.push(['契約情報', '弊社担当者', c.staffName]);
+
+    const m = state.media;
+    rows.push(['メディア設定', '担当者名', m.managerName]);
+    rows.push(['メディア設定', '担当者メールアドレス', m.managerEmail]);
+    rows.push(['メディア設定', '送信元メールアドレス', m.fromEmail]);
+    rows.push(['メディア設定', 'LINEトークン', m.lineToken]);
+
+    if (state.organizations.length) {
+      state.organizations.forEach((n, i) => rows.push(['組織設定', '組織' + (i + 1), nodePath(state.organizations, n.id)]));
+    } else {
+      rows.push(['組織設定', '(未登録)', '']);
+    }
+
+    if (state.categories.length) {
+      state.categories.forEach((n, i) => rows.push(['配信カテゴリ', 'カテゴリ' + (i + 1), nodePath(state.categories, n.id)]));
+    } else {
+      rows.push(['配信カテゴリ', '(未登録)', '']);
+    }
+
+    rows.push(['配信タグ', 'タグ一覧', state.tags.map((t) => t.name).join('、')]);
+
+    const ad = state.autoDelivery;
+    rows.push(['自動配信設定', '配信カテゴリ', findCategoryName(ad.categoryId)]);
+    rows.push(['自動配信設定', '配信タグ', ad.tagIds.map(findTagName).filter(Boolean).join('、')]);
+    rows.push(['自動配信設定', '配信レベル', ad.level]);
+
+    rows.push(['ステータス', '提出状況', STATUS_LABEL[state.status]]);
+    if (state.status === 'rejected') rows.push(['ステータス', '差し戻しコメント', state.rejectComment]);
+
+    return rows;
+  }
+
+  function downloadCsv() {
+    const rows = buildCsvRows();
+    const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
+    const bom = String.fromCharCode(0xfeff);
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    const safeId = (state.contract.contractId || 'export').replace(/[^A-Za-z0-9_-]/g, '');
+    a.download = `settings-checklist_${safeId}_${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function renderAutoDeliverySection() {
     const editable = isCustomerFieldsEditable();
     const flatCategories = flattenTree(state.categories);
@@ -463,6 +536,8 @@
       html += `<div class="missing-list"><strong>未入力の必須項目</strong><ul>${missing.map((m) => `<li>${escapeHtml(m.label)}</li>`).join('')}</ul></div>`;
     }
 
+    html += `<div class="btn-row"><button class="btn btn--secondary" id="exportCsvBtn">CSV出力（Excelで開けます）</button></div>`;
+
     if (state.mode === 'customer') {
       const canSubmit = missing.length === 0 && (state.status === 'draft' || state.status === 'rejected');
       const label = state.status === 'submitted' ? '提出済み' : state.status === 'confirmed' ? '確認完了' : '提出する';
@@ -484,6 +559,11 @@
     }
 
     mainContent.innerHTML = html;
+
+    document.getElementById('exportCsvBtn').addEventListener('click', () => {
+      downloadCsv();
+      showToast('CSVを出力しました');
+    });
 
     if (state.mode === 'customer') {
       const submitBtn = document.getElementById('submitBtn');
