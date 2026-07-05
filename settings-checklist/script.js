@@ -451,6 +451,63 @@
     URL.revokeObjectURL(url);
   }
 
+  function formatDateTime(d) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function buildPrintHtml() {
+    const c = state.contract;
+    const m = state.media;
+    const ad = state.autoDelivery;
+    const orgByParent = buildChildrenMap(state.organizations);
+    const catByParent = buildChildrenMap(state.categories);
+
+    return `
+      <h1>設定確認表</h1>
+      <p class="print-meta">出力日時: ${escapeHtml(formatDateTime(new Date()))} ／ ステータス: ${escapeHtml(STATUS_LABEL[state.status])}</p>
+
+      ${state.status === 'rejected' ? `<div class="print-note"><strong>差し戻しコメント：</strong>${escapeHtml(state.rejectComment) || '(コメントなし)'}</div>` : ''}
+
+      <h2>契約情報</h2>
+      <table class="print-table">
+        <tr><th>契約ID</th><td>${escapeHtml(c.contractId) || '-'}</td></tr>
+        <tr><th>契約プラン</th><td>${escapeHtml(c.plan) || '-'}</td></tr>
+        <tr><th>契約開始日</th><td>${escapeHtml(c.startDate) || '-'}</td></tr>
+        <tr><th>弊社担当者</th><td>${escapeHtml(c.staffName) || '-'}</td></tr>
+      </table>
+
+      <h2>メディア設定</h2>
+      <table class="print-table">
+        <tr><th>担当者名</th><td>${escapeHtml(m.managerName) || '-'}</td></tr>
+        <tr><th>担当者メールアドレス</th><td>${escapeHtml(m.managerEmail) || '-'}</td></tr>
+        <tr><th>送信元メールアドレス</th><td>${escapeHtml(m.fromEmail) || '-'}</td></tr>
+        <tr><th>LINEトークン</th><td>${escapeHtml(m.lineToken) || '-'}</td></tr>
+      </table>
+
+      <h2>組織設定</h2>
+      ${state.organizations.length ? renderTreeNodes(orgByParent.root || [], orgByParent, false) : '<p class="print-empty">未登録</p>'}
+
+      <h2>配信カテゴリ</h2>
+      ${state.categories.length ? renderTreeNodes(catByParent.root || [], catByParent, false) : '<p class="print-empty">未登録</p>'}
+
+      <h2>配信タグ</h2>
+      ${state.tags.length ? `<p>${state.tags.map((t) => escapeHtml(t.name)).join('、')}</p>` : '<p class="print-empty">未登録</p>'}
+
+      <h2>自動配信設定</h2>
+      <table class="print-table">
+        <tr><th>配信カテゴリ</th><td>${escapeHtml(findCategoryName(ad.categoryId)) || '-'}</td></tr>
+        <tr><th>配信タグ</th><td>${ad.tagIds.map(findTagName).filter(Boolean).map(escapeHtml).join('、') || '-'}</td></tr>
+        <tr><th>配信レベル</th><td>${escapeHtml(ad.level) || '-'}</td></tr>
+      </table>
+    `;
+  }
+
+  function printPdf() {
+    document.getElementById('printArea').innerHTML = buildPrintHtml();
+    window.print();
+  }
+
   function renderAutoDeliverySection() {
     const editable = isCustomerFieldsEditable();
     const flatCategories = flattenTree(state.categories);
@@ -536,7 +593,10 @@
       html += `<div class="missing-list"><strong>未入力の必須項目</strong><ul>${missing.map((m) => `<li>${escapeHtml(m.label)}</li>`).join('')}</ul></div>`;
     }
 
-    html += `<div class="btn-row"><button class="btn btn--secondary" id="exportCsvBtn">CSV出力（Excelで開けます）</button></div>`;
+    html += `<div class="btn-row">
+      <button class="btn btn--secondary" id="exportCsvBtn">CSV出力（Excelで開けます）</button>
+      <button class="btn btn--secondary" id="exportPdfBtn">PDF出力（印刷）</button>
+    </div>`;
 
     if (state.mode === 'customer') {
       const canSubmit = missing.length === 0 && (state.status === 'draft' || state.status === 'rejected');
@@ -563,6 +623,9 @@
     document.getElementById('exportCsvBtn').addEventListener('click', () => {
       downloadCsv();
       showToast('CSVを出力しました');
+    });
+    document.getElementById('exportPdfBtn').addEventListener('click', () => {
+      printPdf();
     });
 
     if (state.mode === 'customer') {
