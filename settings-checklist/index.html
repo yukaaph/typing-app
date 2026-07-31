@@ -8,7 +8,9 @@
 </head>
 <body>
 
-<div class="shell">
+<div id="loginScreen" class="login-screen"></div>
+
+<div class="shell" id="shell">
   <aside class="sidebar">
     <div class="sidebar__brand">
       <div class="sidebar__brand-icon">⚙</div>
@@ -34,17 +36,14 @@
       <div class="topbar__context">
         <span class="topbar__label">対象契約：デモ用サンプル契約</span>
         <div class="status-badge" id="statusBadge">下書き</div>
-
-        <div class="mode-switch" role="tablist" aria-label="表示モード切替">
-          <button type="button" class="mode-switch__btn is-active" data-mode="customer">お客様画面</button>
-          <button type="button" class="mode-switch__btn" data-mode="staff">社内担当者画面</button>
-        </div>
+        <div class="user-chip" id="userChip"></div>
       </div>
 
       <div class="topbar__actions">
         <button type="button" class="topbar__btn" id="topbarCsvBtn">⇩ 設定をCSV出力</button>
         <button type="button" class="topbar__btn" id="topbarPdfBtn">🖶 PDF出力（印刷）</button>
         <button type="button" class="topbar__btn topbar__btn--ghost" id="resetBtn">⟳ デモデータをリセット</button>
+        <button type="button" class="topbar__btn topbar__btn--ghost" id="logoutBtn">⎋ ログアウト</button>
       </div>
     </header>
 

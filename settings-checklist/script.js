@@ -23,6 +23,11 @@
     { id: 'プレミアムプラン', desc: '全カテゴリ・自動配信・API連携など全機能をご利用いただけます。' }
   ];
 
+  const DEMO_ACCOUNTS = {
+    'customer-demo': { password: 'demo1234', role: 'customer', displayName: 'お客様 デモ担当者' },
+    'staff-demo': { password: 'demo1234', role: 'staff', displayName: '弊社 デモ担当者' }
+  };
+
   function uid() {
     return 'id-' + Math.random().toString(36).slice(2, 10);
   }
@@ -62,7 +67,8 @@
       status: 'draft',
       rejectComment: '',
       mode: 'customer',
-      activeSection: 'contract'
+      activeSection: 'contract',
+      auth: { loggedIn: false, username: '', role: '', displayName: '' }
     };
   }
 
@@ -76,6 +82,7 @@
         contract: Object.assign(base.contract, parsed.contract || {}),
         media: Object.assign(base.media, parsed.media || {}),
         autoDelivery: Object.assign(base.autoDelivery, parsed.autoDelivery || {}),
+        auth: Object.assign(base.auth, parsed.auth || {}),
         organizations: Array.isArray(parsed.organizations) ? parsed.organizations : [],
         categories: Array.isArray(parsed.categories) ? parsed.categories : [],
         tags: Array.isArray(parsed.tags) ? parsed.tags : []
@@ -93,8 +100,12 @@
 
   const mainContent = document.getElementById('mainContent');
   const statusBadge = document.getElementById('statusBadge');
+  const userChip = document.getElementById('userChip');
   const toast = document.getElementById('toast');
   const resetBtn = document.getElementById('resetBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const loginScreen = document.getElementById('loginScreen');
+  const shellEl = document.getElementById('shell');
   let toastTimer;
 
   function showToast(msg) {
@@ -102,6 +113,59 @@
     toast.classList.add('is-visible');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 2200);
+  }
+
+  function renderLoginScreen(errorMsg) {
+    loginScreen.innerHTML = `
+      <div class="login-card">
+        <div class="login-card__brand">
+          <div class="sidebar__brand-icon">⚙</div>
+          <div>
+            <div class="login-card__title">設定確認表 Webポータル</div>
+            <div class="login-card__subtitle">プロトタイプ ログイン</div>
+          </div>
+        </div>
+        ${errorMsg ? `<div class="login-error">${escapeHtml(errorMsg)}</div>` : ''}
+        <div class="field-group">
+          <div class="field-label">ユーザーID</div>
+          <input type="text" id="loginUser" placeholder="例：customer-demo">
+        </div>
+        <div class="field-group">
+          <div class="field-label">パスワード</div>
+          <input type="text" id="loginPass" placeholder="例：demo1234">
+        </div>
+        <button class="btn btn--primary" id="loginSubmitBtn">ログイン</button>
+        <div class="login-divider">または、デモアカウントで試す</div>
+        <div class="login-demo-buttons">
+          <button class="btn btn--secondary btn--small" id="loginAsCustomerBtn">お客様としてログイン</button>
+          <button class="btn btn--secondary btn--small" id="loginAsStaffBtn">社内担当者としてログイン</button>
+        </div>
+        <p class="login-note">これはプロトタイプのデモログインです。実際の認証・パスワード保護には対応していません。</p>
+      </div>
+    `;
+    const userInput = document.getElementById('loginUser');
+    const passInput = document.getElementById('loginPass');
+    const submit = () => attemptLogin(userInput.value.trim(), passInput.value.trim());
+    document.getElementById('loginSubmitBtn').addEventListener('click', submit);
+    document.getElementById('loginAsCustomerBtn').addEventListener('click', () => attemptLogin('customer-demo', 'demo1234'));
+    document.getElementById('loginAsStaffBtn').addEventListener('click', () => attemptLogin('staff-demo', 'demo1234'));
+    [userInput, passInput].forEach((el) => {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submit();
+      });
+    });
+  }
+
+  function attemptLogin(username, password) {
+    const account = DEMO_ACCOUNTS[username];
+    if (!account || account.password !== password) {
+      renderLoginScreen('ユーザーIDまたはパスワードが正しくありません。（デモ：customer-demo / staff-demo、パスワード：demo1234）');
+      return;
+    }
+    state.auth = { loggedIn: true, username, role: account.role, displayName: account.displayName };
+    state.mode = account.role;
+    saveState();
+    renderApp();
   }
 
   function isCustomerFieldsEditable() {
@@ -697,10 +761,10 @@
     statusBadge.dataset.status = state.status;
   }
 
-  function renderModeSwitch() {
-    document.querySelectorAll('.mode-switch__btn').forEach((btn) => {
-      btn.classList.toggle('is-active', btn.dataset.mode === state.mode);
-    });
+  function renderUserChip() {
+    const a = state.auth;
+    const roleLabel = a.role === 'staff' ? '社内担当者' : 'お客様';
+    userChip.textContent = `${a.displayName || a.username}（${roleLabel}）としてログイン中`;
   }
 
   function renderSideNav() {
@@ -722,19 +786,23 @@
 
   function render() {
     renderStatusBadge();
-    renderModeSwitch();
+    renderUserChip();
     renderSideNav();
     const fn = SECTION_RENDERERS[state.activeSection];
     if (fn) fn();
   }
 
-  document.querySelectorAll('.mode-switch__btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.mode = btn.dataset.mode;
-      saveState();
-      render();
-    });
-  });
+  function renderApp() {
+    if (!state.auth.loggedIn) {
+      shellEl.style.display = 'none';
+      loginScreen.style.display = 'flex';
+      renderLoginScreen();
+      return;
+    }
+    loginScreen.style.display = 'none';
+    shellEl.style.display = 'flex';
+    render();
+  }
 
   document.querySelectorAll('.side-nav__item').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -745,11 +813,18 @@
   });
 
   resetBtn.addEventListener('click', () => {
-    if (!confirm('入力したデモデータをすべて削除し、初期状態に戻します。よろしいですか？')) return;
+    if (!confirm('入力したデモデータをすべて削除し、初期状態に戻します（ログアウトされます）。よろしいですか？')) return;
     localStorage.removeItem(STORAGE_KEY);
     state = defaultState();
-    render();
+    renderApp();
     showToast('リセットしました');
+  });
+
+  logoutBtn.addEventListener('click', () => {
+    state.auth = { loggedIn: false, username: '', role: '', displayName: '' };
+    saveState();
+    renderApp();
+    showToast('ログアウトしました');
   });
 
   document.getElementById('topbarCsvBtn').addEventListener('click', () => {
@@ -761,5 +836,5 @@
     printPdf();
   });
 
-  render();
+  renderApp();
 })();
