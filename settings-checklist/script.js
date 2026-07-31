@@ -18,6 +18,11 @@
     rejected: '差し戻し中'
   };
 
+  const PLAN_OPTIONS = [
+    { id: 'スタンダードプラン', desc: '主要な配信カテゴリ・タグ機能をご利用いただけます。' },
+    { id: 'プレミアムプラン', desc: '全カテゴリ・自動配信・API連携など全機能をご利用いただけます。' }
+  ];
+
   function uid() {
     return 'id-' + Math.random().toString(36).slice(2, 10);
   }
@@ -196,7 +201,7 @@
           ${editable ? `<div class="tree-node__actions">
             <button class="btn btn--ghost btn--small" data-action="add-child" data-id="${node.id}">＋子を追加</button>
             <button class="btn btn--ghost btn--small" data-action="rename" data-id="${node.id}">編集</button>
-            <button class="btn btn--danger btn--small" data-action="delete" data-id="${node.id}">削除</button>
+            <button class="btn-link-danger" data-action="delete" data-id="${node.id}">削除</button>
           </div>` : ''}
         </div>
         ${children.length ? renderTreeNodes(children, byParent, editable) : ''}
@@ -213,7 +218,7 @@
     mainContent.innerHTML = `
       <h2 class="section-title">${title}</h2>
       <p class="section-desc">${itemLabel}は階層構造で登録できます。「＋子を追加」で下位階層を追加できます。</p>
-      ${editable ? `<div class="tree-toolbar"><button class="btn btn--secondary btn--small" id="addRootBtn">＋ルート${itemLabel}を追加</button></div>` : ''}
+      ${editable ? `<div class="tree-toolbar"><button class="btn btn--add btn--small" id="addRootBtn">＋ルート${itemLabel}を追加</button></div>` : ''}
       <div id="treeAddForm"></div>
       ${rootNodes.length ? renderTreeNodes(rootNodes, byParent, editable) : `<div class="tree-empty">まだ${itemLabel}が登録されていません。</div>`}
     `;
@@ -266,14 +271,32 @@
         <h2 class="section-title">契約情報</h2>
         <p class="section-desc">弊社担当者が設定する契約情報です。お客様画面では閲覧のみとなります。</p>
         <div class="field-group"><div class="field-label">契約ID</div><input type="text" id="field-contractId" value="${escapeHtml(c.contractId)}"></div>
-        <div class="field-group"><div class="field-label">契約プラン</div><input type="text" id="field-plan" value="${escapeHtml(c.plan)}"></div>
+        <div class="field-group">
+          <div class="field-label">契約プラン</div>
+          <div class="plan-cards" id="planCards">
+            ${PLAN_OPTIONS.map((p) => `
+              <label class="plan-card ${c.plan === p.id ? 'is-selected' : ''}">
+                <input type="radio" name="plan" value="${escapeHtml(p.id)}" ${c.plan === p.id ? 'checked' : ''}>
+                <span class="plan-card__title">${escapeHtml(p.id)}</span>
+                <span class="plan-card__desc">${escapeHtml(p.desc)}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
         <div class="field-group"><div class="field-label">契約開始日</div><input type="text" id="field-startDate" value="${escapeHtml(c.startDate)}" placeholder="YYYY-MM-DD"></div>
         <div class="field-group"><div class="field-label">弊社担当者</div><input type="text" id="field-staffName" value="${escapeHtml(c.staffName)}"></div>
         <div class="btn-row"><button class="btn btn--primary" id="saveContractBtn">保存</button></div>
       `;
+      mainContent.querySelectorAll('input[name="plan"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+          mainContent.querySelectorAll('.plan-card').forEach((card) => card.classList.remove('is-selected'));
+          radio.closest('.plan-card').classList.add('is-selected');
+        });
+      });
       document.getElementById('saveContractBtn').addEventListener('click', () => {
+        const checkedPlan = mainContent.querySelector('input[name="plan"]:checked');
         c.contractId = document.getElementById('field-contractId').value;
-        c.plan = document.getElementById('field-plan').value;
+        c.plan = checkedPlan ? checkedPlan.value : c.plan;
         c.startDate = document.getElementById('field-startDate').value;
         c.staffName = document.getElementById('field-staffName').value;
         saveState();
@@ -331,17 +354,25 @@
 
   function renderTagsSection() {
     const editable = isCustomerFieldsEditable();
+    const colCount = editable ? 3 : 2;
+    const rows = state.tags.length
+      ? state.tags.map((t, i) => `<tr>
+          <td>${i + 1}</td>
+          <td>${escapeHtml(t.name)}</td>
+          ${editable ? `<td><button class="btn-link-danger" data-id="${t.id}">削除</button></td>` : ''}
+        </tr>`).join('')
+      : `<tr><td colspan="${colCount}" class="table-empty">まだタグが登録されていません。</td></tr>`;
+
     mainContent.innerHTML = `
       <h2 class="section-title">配信タグ</h2>
       <p class="section-desc">配信タグは階層を持たないフラットな一覧です。</p>
-      <div class="tag-list" id="tagList">
-        ${state.tags.length ? state.tags.map((t) => `
-          <span class="tag-pill">${escapeHtml(t.name)}${editable ? `<button data-id="${t.id}" aria-label="削除">✕</button>` : ''}</span>
-        `).join('') : '<span style="color:var(--color-text-muted); font-size:13px;">まだタグが登録されていません。</span>'}
-      </div>
+      <table class="repeat-table">
+        <thead><tr><th>No.</th><th>タグ名</th>${editable ? '<th>操作</th>' : ''}</tr></thead>
+        <tbody id="tagList">${rows}</tbody>
+      </table>
       ${editable ? `<div class="inline-form">
         <input type="text" id="newTagInput" placeholder="新しいタグ名">
-        <button class="btn btn--primary btn--small" id="addTagBtn">追加</button>
+        <button class="btn btn--add btn--small" id="addTagBtn">＋ タグ追加</button>
       </div>` : ''}
     `;
     if (!editable) return;
@@ -593,11 +624,6 @@
       html += `<div class="missing-list"><strong>未入力の必須項目</strong><ul>${missing.map((m) => `<li>${escapeHtml(m.label)}</li>`).join('')}</ul></div>`;
     }
 
-    html += `<div class="btn-row">
-      <button class="btn btn--secondary" id="exportCsvBtn">CSV出力（Excelで開けます）</button>
-      <button class="btn btn--secondary" id="exportPdfBtn">PDF出力（印刷）</button>
-    </div>`;
-
     if (state.mode === 'customer') {
       const canSubmit = missing.length === 0 && (state.status === 'draft' || state.status === 'rejected');
       const label = state.status === 'submitted' ? '提出済み' : state.status === 'confirmed' ? '確認完了' : '提出する';
@@ -619,14 +645,6 @@
     }
 
     mainContent.innerHTML = html;
-
-    document.getElementById('exportCsvBtn').addEventListener('click', () => {
-      downloadCsv();
-      showToast('CSVを出力しました');
-    });
-    document.getElementById('exportPdfBtn').addEventListener('click', () => {
-      printPdf();
-    });
 
     if (state.mode === 'customer') {
       const submitBtn = document.getElementById('submitBtn');
@@ -732,6 +750,15 @@
     state = defaultState();
     render();
     showToast('リセットしました');
+  });
+
+  document.getElementById('topbarCsvBtn').addEventListener('click', () => {
+    downloadCsv();
+    showToast('CSVを出力しました');
+  });
+
+  document.getElementById('topbarPdfBtn').addEventListener('click', () => {
+    printPdf();
   });
 
   render();
