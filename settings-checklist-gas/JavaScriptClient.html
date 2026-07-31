@@ -1,0 +1,887 @@
+<script>
+(function () {
+  var TOKEN_KEY = 'settings-checklist-gas-token';
+
+  var NAV_LABELS = {
+    contract: '契約情報',
+    media: 'メディア設定',
+    organizations: '組織設定',
+    categories: '配信カテゴリ',
+    tags: '配信タグ',
+    autoDelivery: '自動配信設定',
+    overview: '提出内容確認'
+  };
+
+  var STATUS_LABEL = {
+    draft: '下書き',
+    submitted: '提出済・確認待ち',
+    confirmed: '確認完了',
+    rejected: '差し戻し中'
+  };
+
+  var PLAN_OPTIONS = [
+    { id: 'スタンダードプラン', desc: '主要な配信カテゴリ・タグ機能をご利用いただけます。' },
+    { id: 'プレミアムプラン', desc: '全カテゴリ・自動配信・API連携など全機能をご利用いただけます。' }
+  ];
+
+  function uid() {
+    return 'id-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+
+  function isEmail(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  function defaultOperationalState() {
+    return {
+      contract: { contractId: '', plan: '', startDate: '', staffName: '' },
+      media: { managerName: '', managerEmail: '', fromEmail: '', lineToken: '' },
+      organizations: [],
+      categories: [],
+      tags: [],
+      autoDelivery: { categoryId: '', tagIds: [], level: '' },
+      status: 'draft',
+      rejectComment: ''
+    };
+  }
+
+  var state = Object.assign(defaultOperationalState(), {
+    mode: 'customer',
+    activeSection: 'contract',
+    auth: { loggedIn: false, username: '', role: '', displayName: '', token: '' }
+  });
+
+  function getToken() {
+    return localStorage.getItem(TOKEN_KEY) || '';
+  }
+  function setToken(t) {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  }
+
+  // Thin Promise wrapper around google.script.run, which otherwise only
+  // supports withSuccessHandler/withFailureHandler callbacks.
+  function gasCall(fnName) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject)[fnName].apply(null, args);
+    });
+  }
+
+  var mainContent = document.getElementById('mainContent');
+  var statusBadge = document.getElementById('statusBadge');
+  var userChip = document.getElementById('userChip');
+  var toast = document.getElementById('toast');
+  var resetBtn = document.getElementById('resetBtn');
+  var logoutBtn = document.getElementById('logoutBtn');
+  var loginScreen = document.getElementById('loginScreen');
+  var loadingScreen = document.getElementById('loadingScreen');
+  var shellEl = document.getElementById('shell');
+  var toastTimer;
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('is-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.classList.remove('is-visible'); }, 2200);
+  }
+
+  function errorMessage(err) {
+    var raw = err && err.message ? err.message : String(err);
+    return raw.split(':').length > 1 ? raw.split(':').slice(1).join(':').trim() : raw;
+  }
+
+  function showConfirm(anchorEl, message, onConfirm) {
+    var formId = 'confirmForm-' + Math.random().toString(36).slice(2, 8);
+    var html = '<div class="inline-form" id="' + formId + '">' +
+      '<span style="font-size:13px;">' + escapeHtml(message) + '</span>' +
+      '<button class="btn btn--danger btn--small" data-role="yes">実行する</button>' +
+      '<button class="btn btn--ghost btn--small" data-role="no">キャンセル</button>' +
+      '</div>';
+    anchorEl.insertAdjacentHTML('afterend', html);
+    var form = document.getElementById(formId);
+    form.querySelector('[data-role="yes"]').addEventListener('click', function () { form.remove(); onConfirm(); });
+    form.querySelector('[data-role="no"]').addEventListener('click', function () { form.remove(); });
+  }
+
+  function isCustomerFieldsEditable() {
+    return state.mode === 'customer' && (state.status === 'draft' || state.status === 'rejected');
+  }
+
+  function isContractEditable() {
+    return state.mode === 'staff';
+  }
+
+  // ---- Login screen ----
+
+  function renderLoginScreen(errorMsg) {
+    loginScreen.innerHTML =
+      '<div class="login-card">' +
+        '<div class="login-card__brand">' +
+          '<div class="sidebar__brand-icon">⚙</div>' +
+          '<div>' +
+            '<div class="login-card__title">設定確認表 Webポータル</div>' +
+            '<div class="login-card__subtitle">GAS版プロトタイプ ログイン</div>' +
+          '</div>' +
+        '</div>' +
+        (errorMsg ? '<div class="login-error">' + escapeHtml(errorMsg) + '</div>' : '') +
+        '<div class="field-group">' +
+          '<div class="field-label">ユーザーID</div>' +
+          '<input type="text" id="loginUser" placeholder="例：customer-demo">' +
+        '</div>' +
+        '<div class="field-group">' +
+          '<div class="field-label">パスワード</div>' +
+          '<input type="text" id="loginPass" placeholder="例：demo1234">' +
+        '</div>' +
+        '<button class="btn btn--primary" id="loginSubmitBtn">ログイン</button>' +
+        '<div class="login-divider">または、デモアカウントで試す</div>' +
+        '<div class="login-demo-buttons">' +
+          '<button class="btn btn--secondary btn--small" id="loginAsCustomerBtn">お客様としてログイン</button>' +
+          '<button class="btn btn--secondary btn--small" id="loginAsStaffBtn">社内担当者としてログイン</button>' +
+        '</div>' +
+        '<p class="login-note">このログインはGoogle Sheets上のUsersシートで管理しています。パスワードはSHA-256でハッシュ化して照合しますが、本番想定のセキュリティ対策（ソルト・多要素認証・ログイン試行制限等）は行っていません。</p>' +
+      '</div>';
+
+    var userInput = document.getElementById('loginUser');
+    var passInput = document.getElementById('loginPass');
+    var submit = function () { doLogin(userInput.value.trim(), passInput.value.trim()); };
+    document.getElementById('loginSubmitBtn').addEventListener('click', submit);
+    document.getElementById('loginAsCustomerBtn').addEventListener('click', function () { doLogin('customer-demo', 'demo1234'); });
+    document.getElementById('loginAsStaffBtn').addEventListener('click', function () { doLogin('staff-demo', 'demo1234'); });
+    [userInput, passInput].forEach(function (el) {
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') submit();
+      });
+    });
+  }
+
+  function doLogin(username, password) {
+    gasCall('login', username, password).then(function (res) {
+      if (!res.ok) {
+        renderLoginScreen(res.message);
+        return;
+      }
+      state.auth = { loggedIn: true, username: res.username, role: res.role, displayName: res.displayName, token: res.token };
+      state.mode = res.role;
+      setToken(res.token);
+      return loadStateFromServer();
+    }).catch(function (err) {
+      renderLoginScreen('サーバーエラー：' + errorMessage(err));
+    });
+  }
+
+  function applyServerState(s) {
+    state.contract = s.contract;
+    state.media = s.media;
+    state.organizations = s.organizations;
+    state.categories = s.categories;
+    state.tags = s.tags;
+    state.autoDelivery = s.autoDelivery;
+    state.status = s.status;
+    state.rejectComment = s.rejectComment;
+  }
+
+  function loadStateFromServer() {
+    return gasCall('apiGetState', state.auth.token).then(function (res) {
+      applyServerState(res.state);
+      renderApp();
+    }).catch(function () {
+      setToken('');
+      state.auth = { loggedIn: false, username: '', role: '', displayName: '', token: '' };
+      renderApp();
+      showToast('セッションの有効期限が切れました。再度ログインしてください。');
+    });
+  }
+
+  function pushStateToServer() {
+    var payload = {
+      contract: state.contract,
+      media: state.media,
+      organizations: state.organizations,
+      categories: state.categories,
+      tags: state.tags,
+      autoDelivery: state.autoDelivery
+    };
+    return gasCall('apiSaveState', state.auth.token, payload).then(function (res) {
+      applyServerState(res.state);
+      render();
+    }).catch(function (err) {
+      showToast('保存に失敗しました：' + errorMessage(err));
+      return loadStateFromServer();
+    });
+  }
+
+  // ---- Validation ----
+
+  function validate() {
+    var missing = [];
+    var m = state.media;
+    if (!m.managerName.trim()) missing.push({ section: 'media', label: 'メディア設定: 担当者名' });
+    if (!m.managerEmail.trim()) missing.push({ section: 'media', label: 'メディア設定: 担当者メールアドレス' });
+    else if (!isEmail(m.managerEmail.trim())) missing.push({ section: 'media', label: 'メディア設定: 担当者メールアドレス（メール形式で入力してください）' });
+    if (!m.fromEmail.trim()) missing.push({ section: 'media', label: 'メディア設定: 送信元メールアドレス' });
+    else if (!isEmail(m.fromEmail.trim())) missing.push({ section: 'media', label: 'メディア設定: 送信元メールアドレス（メール形式で入力してください）' });
+
+    if (state.organizations.length === 0) missing.push({ section: 'organizations', label: '組織設定: 組織を1件以上登録してください' });
+    if (state.categories.length === 0) missing.push({ section: 'categories', label: '配信カテゴリ: カテゴリを1件以上登録してください' });
+
+    if (!state.autoDelivery.categoryId) missing.push({ section: 'autoDelivery', label: '自動配信設定: 配信カテゴリを選択してください' });
+    if (!state.autoDelivery.level.trim()) missing.push({ section: 'autoDelivery', label: '自動配信設定: 配信レベル' });
+
+    return missing;
+  }
+
+  function buildChildrenMap(list) {
+    var byParent = {};
+    list.forEach(function (node) {
+      var key = node.parentId || 'root';
+      if (!byParent[key]) byParent[key] = [];
+      byParent[key].push(node);
+    });
+    return byParent;
+  }
+
+  function deleteNodeAndDescendants(list, id) {
+    var toDelete = {};
+    toDelete[id] = true;
+    var changed = true;
+    while (changed) {
+      changed = false;
+      list.forEach(function (n) {
+        if (n.parentId && toDelete[n.parentId] && !toDelete[n.id]) {
+          toDelete[n.id] = true;
+          changed = true;
+        }
+      });
+    }
+    for (var i = list.length - 1; i >= 0; i--) {
+      if (toDelete[list[i].id]) list.splice(i, 1);
+    }
+    if (state.autoDelivery.categoryId && toDelete[state.autoDelivery.categoryId]) {
+      state.autoDelivery.categoryId = '';
+    }
+    state.autoDelivery.tagIds = state.autoDelivery.tagIds.filter(function (tid) { return !toDelete[tid]; });
+  }
+
+  function flattenTree(list, parentId, depth, acc) {
+    parentId = parentId || null;
+    depth = depth || 0;
+    acc = acc || [];
+    list.filter(function (n) { return (n.parentId || null) === parentId; }).forEach(function (n) {
+      acc.push({ id: n.id, name: n.name, depth: depth });
+      flattenTree(list, n.id, depth + 1, acc);
+    });
+    return acc;
+  }
+
+  function showInlineForm(anchorEl, initialValue, onSave, insertAfter) {
+    var formId = 'inlineForm-' + Math.random().toString(36).slice(2, 8);
+    var html = '<div class="inline-form" id="' + formId + '">' +
+      '<input type="text" value="' + escapeHtml(initialValue) + '" placeholder="名称を入力">' +
+      '<button class="btn btn--primary btn--small" data-role="save">保存</button>' +
+      '<button class="btn btn--ghost btn--small" data-role="cancel">キャンセル</button>' +
+      '</div>';
+    anchorEl.insertAdjacentHTML(insertAfter ? 'afterend' : 'beforeend', html);
+    var form = document.getElementById(formId);
+    var input = form.querySelector('input');
+    input.focus();
+    input.select();
+    form.querySelector('[data-role="save"]').addEventListener('click', function () { onSave(input.value); });
+    form.querySelector('[data-role="cancel"]').addEventListener('click', function () { form.remove(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') onSave(input.value);
+      if (e.key === 'Escape') form.remove();
+    });
+  }
+
+  function renderTreeNodes(nodes, byParent, editable) {
+    return '<ul class="tree">' + nodes.map(function (node) {
+      var children = byParent[node.id] || [];
+      return '<li class="tree-node" data-id="' + node.id + '">' +
+        '<div class="tree-node__row">' +
+          '<span class="tree-node__name">' + escapeHtml(node.name) + '</span>' +
+          (editable ? '<div class="tree-node__actions">' +
+            '<button class="btn btn--ghost btn--small" data-action="add-child" data-id="' + node.id + '">＋子を追加</button>' +
+            '<button class="btn btn--ghost btn--small" data-action="rename" data-id="' + node.id + '">編集</button>' +
+            '<button class="btn-link-danger" data-action="delete" data-id="' + node.id + '">削除</button>' +
+          '</div>' : '') +
+        '</div>' +
+        (children.length ? renderTreeNodes(children, byParent, editable) : '') +
+      '</li>';
+    }).join('') + '</ul>';
+  }
+
+  function renderTreeSection(kind, title, itemLabel) {
+    var editable = isCustomerFieldsEditable();
+    var list = state[kind];
+    var byParent = buildChildrenMap(list);
+    var rootNodes = byParent.root || [];
+
+    mainContent.innerHTML =
+      '<h2 class="section-title">' + title + '</h2>' +
+      '<p class="section-desc">' + itemLabel + 'は階層構造で登録できます。「＋子を追加」で下位階層を追加できます。</p>' +
+      (editable ? '<div class="tree-toolbar"><button class="btn btn--add btn--small" id="addRootBtn">＋ルート' + itemLabel + 'を追加</button></div>' : '') +
+      '<div id="treeAddForm"></div>' +
+      (rootNodes.length ? renderTreeNodes(rootNodes, byParent, editable) : '<div class="tree-empty">まだ' + itemLabel + 'が登録されていません。</div>');
+
+    if (!editable) return;
+
+    document.getElementById('addRootBtn').addEventListener('click', function () {
+      showInlineForm(document.getElementById('treeAddForm'), '', function (value) {
+        if (!value.trim()) return;
+        list.push({ id: uid(), name: value.trim(), parentId: null });
+        pushStateToServer();
+      });
+    });
+
+    mainContent.querySelectorAll('[data-action]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var action = btn.dataset.action;
+        var id = btn.dataset.id;
+        if (action === 'delete') {
+          showConfirm(btn.closest('.tree-node__row'), 'この項目と配下の子項目もすべて削除されます。よろしいですか？', function () {
+            deleteNodeAndDescendants(list, id);
+            pushStateToServer();
+          });
+        } else if (action === 'add-child') {
+          showInlineForm(btn.closest('.tree-node__row'), '', function (value) {
+            if (!value.trim()) return;
+            list.push({ id: uid(), name: value.trim(), parentId: id });
+            pushStateToServer();
+          }, true);
+        } else if (action === 'rename') {
+          var node = list.find(function (n) { return n.id === id; });
+          showInlineForm(btn.closest('.tree-node__row'), node.name, function (value) {
+            if (!value.trim()) return;
+            node.name = value.trim();
+            pushStateToServer();
+          }, true);
+        }
+      });
+    });
+  }
+
+  function renderContractSection() {
+    var editable = isContractEditable();
+    var c = state.contract;
+    if (editable) {
+      mainContent.innerHTML =
+        '<h2 class="section-title">契約情報</h2>' +
+        '<p class="section-desc">弊社担当者が設定する契約情報です。お客様画面では閲覧のみとなります。</p>' +
+        '<div class="field-group"><div class="field-label">契約ID</div><input type="text" id="field-contractId" value="' + escapeHtml(c.contractId) + '"></div>' +
+        '<div class="field-group">' +
+          '<div class="field-label">契約プラン</div>' +
+          '<div class="plan-cards" id="planCards">' +
+            PLAN_OPTIONS.map(function (p) {
+              return '<label class="plan-card ' + (c.plan === p.id ? 'is-selected' : '') + '">' +
+                '<input type="radio" name="plan" value="' + escapeHtml(p.id) + '" ' + (c.plan === p.id ? 'checked' : '') + '>' +
+                '<span class="plan-card__title">' + escapeHtml(p.id) + '</span>' +
+                '<span class="plan-card__desc">' + escapeHtml(p.desc) + '</span>' +
+              '</label>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="field-group"><div class="field-label">契約開始日</div><input type="text" id="field-startDate" value="' + escapeHtml(c.startDate) + '" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="field-group"><div class="field-label">弊社担当者</div><input type="text" id="field-staffName" value="' + escapeHtml(c.staffName) + '"></div>' +
+        '<div class="btn-row"><button class="btn btn--primary" id="saveContractBtn">保存</button></div>';
+
+      mainContent.querySelectorAll('input[name="plan"]').forEach(function (radio) {
+        radio.addEventListener('change', function () {
+          mainContent.querySelectorAll('.plan-card').forEach(function (card) { card.classList.remove('is-selected'); });
+          radio.closest('.plan-card').classList.add('is-selected');
+        });
+      });
+      document.getElementById('saveContractBtn').addEventListener('click', function () {
+        var checkedPlan = mainContent.querySelector('input[name="plan"]:checked');
+        c.contractId = document.getElementById('field-contractId').value;
+        c.plan = checkedPlan ? checkedPlan.value : c.plan;
+        c.startDate = document.getElementById('field-startDate').value;
+        c.staffName = document.getElementById('field-staffName').value;
+        pushStateToServer().then(function () { showToast('契約情報を保存しました'); });
+      });
+    } else {
+      mainContent.innerHTML =
+        '<h2 class="section-title">契約情報</h2>' +
+        '<p class="section-desc">こちらは弊社担当者が設定した契約情報です（閲覧のみ）。</p>' +
+        '<div class="field-group"><div class="field-label">契約ID</div><div class="readonly-value">' + (escapeHtml(c.contractId) || '(未設定)') + '</div></div>' +
+        '<div class="field-group"><div class="field-label">契約プラン</div><div class="readonly-value">' + (escapeHtml(c.plan) || '(未設定)') + '</div></div>' +
+        '<div class="field-group"><div class="field-label">契約開始日</div><div class="readonly-value">' + (escapeHtml(c.startDate) || '(未設定)') + '</div></div>' +
+        '<div class="field-group"><div class="field-label">弊社担当者</div><div class="readonly-value">' + (escapeHtml(c.staffName) || '(未設定)') + '</div></div>';
+    }
+  }
+
+  function mediaFieldHTML(key, label, value, required, editable, type) {
+    var badge = required ? '<span class="badge-required">必須</span>' : '<span class="badge-optional">任意</span>';
+    if (editable) {
+      return '<div class="field-group">' +
+        '<div class="field-label">' + label + ' ' + badge + '</div>' +
+        '<input type="' + type + '" id="field-' + key + '" value="' + escapeHtml(value) + '">' +
+      '</div>';
+    }
+    return '<div class="field-group">' +
+      '<div class="field-label">' + label + ' ' + badge + '</div>' +
+      '<div class="readonly-value">' + (escapeHtml(value) || '(未入力)') + '</div>' +
+    '</div>';
+  }
+
+  function renderMediaSection() {
+    var editable = isCustomerFieldsEditable();
+    var m = state.media;
+    mainContent.innerHTML =
+      '<h2 class="section-title">メディア設定</h2>' +
+      '<p class="section-desc">配信に利用する担当者情報・送信元情報を入力してください。</p>' +
+      mediaFieldHTML('managerName', '担当者名', m.managerName, true, editable, 'text') +
+      mediaFieldHTML('managerEmail', '担当者メールアドレス', m.managerEmail, true, editable, 'email') +
+      mediaFieldHTML('fromEmail', '送信元メールアドレス', m.fromEmail, true, editable, 'email') +
+      mediaFieldHTML('lineToken', 'LINEトークン', m.lineToken, false, editable, 'text') +
+      (editable ? '<div class="btn-row"><button class="btn btn--primary" id="saveMediaBtn">保存</button></div>' : '');
+    if (!editable) return;
+    document.getElementById('saveMediaBtn').addEventListener('click', function () {
+      ['managerName', 'managerEmail', 'fromEmail', 'lineToken'].forEach(function (key) {
+        m[key] = document.getElementById('field-' + key).value;
+      });
+      pushStateToServer().then(function () { showToast('メディア設定を保存しました'); });
+    });
+  }
+
+  function renderTagsSection() {
+    var editable = isCustomerFieldsEditable();
+    var colCount = editable ? 3 : 2;
+    var rows = state.tags.length
+      ? state.tags.map(function (t, i) {
+          return '<tr>' +
+            '<td>' + (i + 1) + '</td>' +
+            '<td>' + escapeHtml(t.name) + '</td>' +
+            (editable ? '<td><button class="btn-link-danger" data-id="' + t.id + '">削除</button></td>' : '') +
+          '</tr>';
+        }).join('')
+      : '<tr><td colspan="' + colCount + '" class="table-empty">まだタグが登録されていません。</td></tr>';
+
+    mainContent.innerHTML =
+      '<h2 class="section-title">配信タグ</h2>' +
+      '<p class="section-desc">配信タグは階層を持たないフラットな一覧です。</p>' +
+      '<table class="repeat-table">' +
+        '<thead><tr><th>No.</th><th>タグ名</th>' + (editable ? '<th>操作</th>' : '') + '</tr></thead>' +
+        '<tbody id="tagList">' + rows + '</tbody>' +
+      '</table>' +
+      (editable ? '<div class="inline-form">' +
+        '<input type="text" id="newTagInput" placeholder="新しいタグ名">' +
+        '<button class="btn btn--add btn--small" id="addTagBtn">＋ タグ追加</button>' +
+      '</div>' : '');
+    if (!editable) return;
+
+    var addTagHandler = function () {
+      var input = document.getElementById('newTagInput');
+      var value = input.value.trim();
+      if (!value) return;
+      state.tags.push({ id: uid(), name: value });
+      pushStateToServer();
+    };
+    document.getElementById('addTagBtn').addEventListener('click', addTagHandler);
+    document.getElementById('newTagInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') addTagHandler();
+    });
+    mainContent.querySelectorAll('#tagList button[data-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.dataset.id;
+        state.tags = state.tags.filter(function (t) { return t.id !== id; });
+        state.autoDelivery.tagIds = state.autoDelivery.tagIds.filter(function (tid) { return tid !== id; });
+        pushStateToServer();
+      });
+    });
+  }
+
+  function findCategoryName(id) {
+    var c = state.categories.find(function (c) { return c.id === id; });
+    return c ? c.name : '';
+  }
+  function findTagName(id) {
+    var t = state.tags.find(function (t) { return t.id === id; });
+    return t ? t.name : '';
+  }
+
+  function csvEscape(v) {
+    var s = String(v == null ? '' : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function nodePath(list, id) {
+    var map = {};
+    list.forEach(function (n) { map[n.id] = n; });
+    var parts = [];
+    var cur = map[id];
+    while (cur) {
+      parts.unshift(cur.name);
+      cur = cur.parentId ? map[cur.parentId] : null;
+    }
+    return parts.join(' > ');
+  }
+
+  function buildCsvRows() {
+    var rows = [['分類', '項目', '内容']];
+    var c = state.contract;
+    rows.push(['契約情報', '契約ID', c.contractId]);
+    rows.push(['契約情報', '契約プラン', c.plan]);
+    rows.push(['契約情報', '契約開始日', c.startDate]);
+    rows.push(['契約情報', '弊社担当者', c.staffName]);
+
+    var m = state.media;
+    rows.push(['メディア設定', '担当者名', m.managerName]);
+    rows.push(['メディア設定', '担当者メールアドレス', m.managerEmail]);
+    rows.push(['メディア設定', '送信元メールアドレス', m.fromEmail]);
+    rows.push(['メディア設定', 'LINEトークン', m.lineToken]);
+
+    if (state.organizations.length) {
+      state.organizations.forEach(function (n, i) { rows.push(['組織設定', '組織' + (i + 1), nodePath(state.organizations, n.id)]); });
+    } else {
+      rows.push(['組織設定', '(未登録)', '']);
+    }
+
+    if (state.categories.length) {
+      state.categories.forEach(function (n, i) { rows.push(['配信カテゴリ', 'カテゴリ' + (i + 1), nodePath(state.categories, n.id)]); });
+    } else {
+      rows.push(['配信カテゴリ', '(未登録)', '']);
+    }
+
+    rows.push(['配信タグ', 'タグ一覧', state.tags.map(function (t) { return t.name; }).join('、')]);
+
+    var ad = state.autoDelivery;
+    rows.push(['自動配信設定', '配信カテゴリ', findCategoryName(ad.categoryId)]);
+    rows.push(['自動配信設定', '配信タグ', ad.tagIds.map(findTagName).filter(Boolean).join('、')]);
+    rows.push(['自動配信設定', '配信レベル', ad.level]);
+
+    rows.push(['ステータス', '提出状況', STATUS_LABEL[state.status]]);
+    if (state.status === 'rejected') rows.push(['ステータス', '差し戻しコメント', state.rejectComment]);
+
+    return rows;
+  }
+
+  function downloadCsv() {
+    var rows = buildCsvRows();
+    var csv = rows.map(function (r) { return r.map(csvEscape).join(','); }).join('\r\n');
+    var bom = String.fromCharCode(0xfeff);
+    var blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    var safeId = (state.contract.contractId || 'export').replace(/[^A-Za-z0-9_-]/g, '');
+    a.download = 'settings-checklist_' + safeId + '_' + stamp + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function formatDateTime(d) {
+    function pad(n) { return String(n).padStart(2, '0'); }
+    return d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function buildPrintHtml() {
+    var c = state.contract;
+    var m = state.media;
+    var ad = state.autoDelivery;
+    var orgByParent = buildChildrenMap(state.organizations);
+    var catByParent = buildChildrenMap(state.categories);
+
+    return '<h1>設定確認表</h1>' +
+      '<p class="print-meta">出力日時: ' + escapeHtml(formatDateTime(new Date())) + ' ／ ステータス: ' + escapeHtml(STATUS_LABEL[state.status]) + '</p>' +
+      (state.status === 'rejected' ? '<div class="print-note"><strong>差し戻しコメント：</strong>' + (escapeHtml(state.rejectComment) || '(コメントなし)') + '</div>' : '') +
+      '<h2>契約情報</h2>' +
+      '<table class="print-table">' +
+        '<tr><th>契約ID</th><td>' + (escapeHtml(c.contractId) || '-') + '</td></tr>' +
+        '<tr><th>契約プラン</th><td>' + (escapeHtml(c.plan) || '-') + '</td></tr>' +
+        '<tr><th>契約開始日</th><td>' + (escapeHtml(c.startDate) || '-') + '</td></tr>' +
+        '<tr><th>弊社担当者</th><td>' + (escapeHtml(c.staffName) || '-') + '</td></tr>' +
+      '</table>' +
+      '<h2>メディア設定</h2>' +
+      '<table class="print-table">' +
+        '<tr><th>担当者名</th><td>' + (escapeHtml(m.managerName) || '-') + '</td></tr>' +
+        '<tr><th>担当者メールアドレス</th><td>' + (escapeHtml(m.managerEmail) || '-') + '</td></tr>' +
+        '<tr><th>送信元メールアドレス</th><td>' + (escapeHtml(m.fromEmail) || '-') + '</td></tr>' +
+        '<tr><th>LINEトークン</th><td>' + (escapeHtml(m.lineToken) || '-') + '</td></tr>' +
+      '</table>' +
+      '<h2>組織設定</h2>' +
+      (state.organizations.length ? renderTreeNodes(orgByParent.root || [], orgByParent, false) : '<p class="print-empty">未登録</p>') +
+      '<h2>配信カテゴリ</h2>' +
+      (state.categories.length ? renderTreeNodes(catByParent.root || [], catByParent, false) : '<p class="print-empty">未登録</p>') +
+      '<h2>配信タグ</h2>' +
+      (state.tags.length ? '<p>' + state.tags.map(function (t) { return escapeHtml(t.name); }).join('、') + '</p>' : '<p class="print-empty">未登録</p>') +
+      '<h2>自動配信設定</h2>' +
+      '<table class="print-table">' +
+        '<tr><th>配信カテゴリ</th><td>' + (escapeHtml(findCategoryName(ad.categoryId)) || '-') + '</td></tr>' +
+        '<tr><th>配信タグ</th><td>' + (ad.tagIds.map(findTagName).filter(Boolean).map(escapeHtml).join('、') || '-') + '</td></tr>' +
+        '<tr><th>配信レベル</th><td>' + (escapeHtml(ad.level) || '-') + '</td></tr>' +
+      '</table>';
+  }
+
+  function printPdf() {
+    document.getElementById('printArea').innerHTML = buildPrintHtml();
+    window.print();
+  }
+
+  function renderAutoDeliverySection() {
+    var editable = isCustomerFieldsEditable();
+    var flatCategories = flattenTree(state.categories);
+    var ad = state.autoDelivery;
+
+    var categoryOptions = flatCategories.map(function (c) {
+      return '<option value="' + c.id + '" ' + (ad.categoryId === c.id ? 'selected' : '') + '>' + '　'.repeat(c.depth) + escapeHtml(c.name) + '</option>';
+    }).join('');
+
+    mainContent.innerHTML =
+      '<h2 class="section-title">自動配信設定</h2>' +
+      '<p class="section-desc">自動配信を行う際に使用するカテゴリ・タグ・配信レベルを設定します。</p>' +
+      '<div class="field-group">' +
+        '<div class="field-label">自動配信時の配信カテゴリ <span class="badge-required">必須</span></div>' +
+        (editable
+          ? '<select id="adCategory" ' + (flatCategories.length === 0 ? 'disabled' : '') + '>' +
+              '<option value="">選択してください</option>' + categoryOptions +
+            '</select>' +
+            (flatCategories.length === 0 ? '<div style="font-size:12px;color:var(--color-text-muted);margin-top:6px;">先に「配信カテゴリ」でカテゴリを登録してください。</div>' : '')
+          : '<div class="readonly-value">' + (escapeHtml(findCategoryName(ad.categoryId)) || '(未設定)') + '</div>') +
+      '</div>' +
+      '<div class="field-group">' +
+        '<div class="field-label">配信タグ <span class="badge-optional">任意</span></div>' +
+        (editable
+          ? '<div class="checkbox-list" id="adTags">' +
+              (state.tags.length ? state.tags.map(function (t) {
+                return '<label class="checkbox-row"><input type="checkbox" value="' + t.id + '" ' + (ad.tagIds.indexOf(t.id) !== -1 ? 'checked' : '') + '>' + escapeHtml(t.name) + '</label>';
+              }).join('') : '<span style="font-size:13px;color:var(--color-text-muted);">先に「配信タグ」でタグを登録してください。</span>') +
+            '</div>'
+          : '<div class="readonly-value">' + (ad.tagIds.map(findTagName).filter(Boolean).map(escapeHtml).join('、') || '(未設定)') + '</div>') +
+      '</div>' +
+      '<div class="field-group">' +
+        '<div class="field-label">配信レベル <span class="badge-required">必須</span></div>' +
+        (editable
+          ? '<input type="text" id="adLevel" value="' + escapeHtml(ad.level) + '" placeholder="例：レベル1">'
+          : '<div class="readonly-value">' + (escapeHtml(ad.level) || '(未設定)') + '</div>') +
+      '</div>' +
+      (editable ? '<div class="btn-row"><button class="btn btn--primary" id="saveAutoDeliveryBtn">保存</button></div>' : '');
+
+    if (!editable) return;
+    document.getElementById('saveAutoDeliveryBtn').addEventListener('click', function () {
+      ad.categoryId = document.getElementById('adCategory').value;
+      ad.level = document.getElementById('adLevel').value;
+      ad.tagIds = Array.from(mainContent.querySelectorAll('#adTags input[type="checkbox"]:checked')).map(function (cb) { return cb.value; });
+      pushStateToServer().then(function () { showToast('自動配信設定を保存しました'); });
+    });
+  }
+
+  function renderOverviewSection() {
+    var missing = validate();
+    var sectionsOrder = ['media', 'organizations', 'categories', 'tags', 'autoDelivery'];
+    var missingBySection = {};
+    missing.forEach(function (m) {
+      missingBySection[m.section] = (missingBySection[m.section] || 0) + 1;
+    });
+
+    var html = '<h2 class="section-title">提出内容確認</h2>';
+
+    if (state.status === 'rejected') {
+      html += '<div class="info-banner info-banner--danger"><strong>差し戻しされました。</strong><br>' + (escapeHtml(state.rejectComment) || '(コメントなし)') + '</div>';
+    } else if (state.status === 'submitted') {
+      html += '<div class="info-banner info-banner--warning">提出済みです。弊社担当者の確認をお待ちください。</div>';
+    } else if (state.status === 'confirmed') {
+      html += '<div class="info-banner info-banner--success">弊社担当者による確認が完了しました。</div>';
+    }
+
+    html += '<table class="overview-table"><thead><tr><th>項目</th><th>状態</th></tr></thead><tbody>';
+    sectionsOrder.forEach(function (sec) {
+      var ok = !missingBySection[sec];
+      html += '<tr><td>' + NAV_LABELS[sec] + '</td><td class="' + (ok ? 'check-ok' : 'check-ng') + '">' + (ok ? '✓ 入力済み' : '未入力あり') + '</td></tr>';
+    });
+    html += '</tbody></table>';
+
+    if (missing.length) {
+      html += '<div class="missing-list"><strong>未入力の必須項目</strong><ul>' + missing.map(function (m) { return '<li>' + escapeHtml(m.label) + '</li>'; }).join('') + '</ul></div>';
+    }
+
+    if (state.mode === 'customer') {
+      var canSubmit = missing.length === 0 && (state.status === 'draft' || state.status === 'rejected');
+      var label = state.status === 'submitted' ? '提出済み' : state.status === 'confirmed' ? '確認完了' : '提出する';
+      html += '<div class="btn-row"><button class="btn btn--primary" id="submitBtn" ' + (canSubmit ? '' : 'disabled') + '>' + label + '</button></div>';
+    } else if (state.status === 'submitted') {
+      html += '<div class="field-group">' +
+          '<div class="field-label">差し戻しコメント（差し戻す場合は必須）</div>' +
+          '<textarea class="comment-box" id="staffComment" placeholder="修正依頼の内容を入力してください"></textarea>' +
+        '</div>' +
+        '<div class="btn-row">' +
+          '<button class="btn btn--primary" id="confirmBtn">確認完了にする</button>' +
+          '<button class="btn btn--danger" id="rejectBtn">差し戻す</button>' +
+        '</div>';
+    } else if (state.status === 'confirmed') {
+      html += '<div class="info-banner info-banner--success">この提出内容は確認済みです。</div>';
+    } else {
+      html += '<div class="info-banner info-banner--neutral">お客様からの提出をお待ちしています。</div>';
+    }
+
+    mainContent.innerHTML = html;
+
+    if (state.mode === 'customer') {
+      var submitBtn = document.getElementById('submitBtn');
+      if (submitBtn && !submitBtn.disabled) {
+        submitBtn.addEventListener('click', function () {
+          gasCall('apiSubmit', state.auth.token).then(function (res) {
+            applyServerState(res.state);
+            render();
+            showToast('提出しました');
+          }).catch(function (err) {
+            showToast('提出に失敗しました：' + errorMessage(err));
+          });
+        });
+      }
+    } else {
+      var confirmBtn = document.getElementById('confirmBtn');
+      var rejectBtn = document.getElementById('rejectBtn');
+      if (confirmBtn) {
+        confirmBtn.addEventListener('click', function () {
+          gasCall('apiConfirm', state.auth.token).then(function (res) {
+            applyServerState(res.state);
+            render();
+            showToast('確認完了にしました');
+          }).catch(function (err) {
+            showToast('処理に失敗しました：' + errorMessage(err));
+          });
+        });
+      }
+      if (rejectBtn) {
+        rejectBtn.addEventListener('click', function () {
+          var comment = document.getElementById('staffComment').value.trim();
+          if (!comment) { showToast('差し戻しコメントを入力してください'); return; }
+          gasCall('apiReject', state.auth.token, comment).then(function (res) {
+            applyServerState(res.state);
+            render();
+            showToast('差し戻しました');
+          }).catch(function (err) {
+            showToast('処理に失敗しました：' + errorMessage(err));
+          });
+        });
+      }
+    }
+  }
+
+  var SECTION_RENDERERS = {
+    contract: renderContractSection,
+    media: renderMediaSection,
+    organizations: function () { renderTreeSection('organizations', '組織設定', '組織'); },
+    categories: function () { renderTreeSection('categories', '配信カテゴリ', 'カテゴリ'); },
+    tags: renderTagsSection,
+    autoDelivery: renderAutoDeliverySection,
+    overview: renderOverviewSection
+  };
+
+  function renderStatusBadge() {
+    statusBadge.textContent = STATUS_LABEL[state.status];
+    statusBadge.dataset.status = state.status;
+  }
+
+  function renderUserChip() {
+    var a = state.auth;
+    var roleLabel = a.role === 'staff' ? '社内担当者' : 'お客様';
+    userChip.textContent = (a.displayName || a.username) + '（' + roleLabel + '）としてログイン中';
+  }
+
+  function renderSideNav() {
+    var missing = validate();
+    var missingSections = {};
+    missing.forEach(function (m) { missingSections[m.section] = true; });
+    document.querySelectorAll('.side-nav__item').forEach(function (btn) {
+      var sec = btn.dataset.section;
+      btn.classList.toggle('is-active', sec === state.activeSection);
+      var mark = '';
+      var showChecks = state.mode === 'customer' && (state.status === 'draft' || state.status === 'rejected') && sec !== 'overview' && sec !== 'contract';
+      if (showChecks) {
+        mark = missingSections[sec]
+          ? ' <span class="nav-check" style="color:var(--color-danger)">・</span>'
+          : ' <span class="nav-check" style="color:var(--color-success)">✓</span>';
+      }
+      btn.innerHTML = NAV_LABELS[sec] + mark;
+    });
+  }
+
+  function render() {
+    renderStatusBadge();
+    renderUserChip();
+    renderSideNav();
+    var fn = SECTION_RENDERERS[state.activeSection];
+    if (fn) fn();
+  }
+
+  function renderApp() {
+    loadingScreen.style.display = 'none';
+    if (!state.auth.loggedIn) {
+      shellEl.style.display = 'none';
+      loginScreen.style.display = 'flex';
+      renderLoginScreen();
+      return;
+    }
+    loginScreen.style.display = 'none';
+    shellEl.style.display = 'flex';
+    render();
+  }
+
+  document.querySelectorAll('.side-nav__item').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      state.activeSection = btn.dataset.section;
+      render();
+    });
+  });
+
+  resetBtn.addEventListener('click', function () {
+    if (!confirm('お客様・社内担当者で共有しているデモの設定データを初期状態に戻します（ログアウトはされません）。よろしいですか？')) return;
+    gasCall('apiResetDemo', state.auth.token).then(function (res) {
+      applyServerState(res.state);
+      render();
+      showToast('リセットしました');
+    }).catch(function (err) {
+      showToast('リセットに失敗しました：' + errorMessage(err));
+    });
+  });
+
+  logoutBtn.addEventListener('click', function () {
+    gasCall('logout', state.auth.token).catch(function () {}).then(function () {
+      setToken('');
+      state.auth = { loggedIn: false, username: '', role: '', displayName: '', token: '' };
+      renderApp();
+      showToast('ログアウトしました');
+    });
+  });
+
+  document.getElementById('topbarCsvBtn').addEventListener('click', function () {
+    downloadCsv();
+    showToast('CSVを出力しました');
+  });
+
+  document.getElementById('topbarPdfBtn').addEventListener('click', function () {
+    printPdf();
+  });
+
+  // ---- Boot ----
+  (function boot() {
+    var token = getToken();
+    if (!token) {
+      renderApp();
+      return;
+    }
+    gasCall('apiGetState', token).then(function (res) {
+      state.auth = { loggedIn: true, username: res.session.username, role: res.session.role, displayName: res.session.displayName, token: token };
+      state.mode = res.session.role;
+      applyServerState(res.state);
+      renderApp();
+    }).catch(function () {
+      setToken('');
+      renderApp();
+    });
+  })();
+})();
+</script>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設定確認表 Webポータル</title>
+<?!= include('Stylesheet'); ?>
+</head>
+<body>
+
+<div id="loadingScreen" class="loading-screen">読み込み中…</div>
+
+<div id="loginScreen" class="login-screen"></div>
+
+<div class="shell" id="shell">
+  <aside class="sidebar">
+    <div class="sidebar__brand">
+      <div class="sidebar__brand-icon">⚙</div>
+      <div>
+        <div class="sidebar__brand-title">設定確認表</div>
+        <div class="sidebar__brand-sub">Webポータル（GAS版プロトタイプ）</div>
+      </div>
+    </div>
+
+    <nav class="side-nav" id="sideNav">
+      <button type="button" class="side-nav__item is-active" data-section="contract">契約情報</button>
+      <button type="button" class="side-nav__item" data-section="media">メディア設定</button>
+      <button type="button" class="side-nav__item" data-section="organizations">組織設定</button>
+      <button type="button" class="side-nav__item" data-section="categories">配信カテゴリ</button>
+      <button type="button" class="side-nav__item" data-section="tags">配信タグ</button>
+      <button type="button" class="side-nav__item" data-section="autoDelivery">自動配信設定</button>
+      <button type="button" class="side-nav__item" data-section="overview">提出内容確認</button>
+    </nav>
+  </aside>
+
+  <div class="shell__body">
+    <header class="topbar">
+      <div class="topbar__context">
+        <span class="topbar__label">対象契約：デモ用サンプル契約</span>
+        <div class="status-badge" id="statusBadge">下書き</div>
+        <div class="user-chip" id="userChip"></div>
+      </div>
+
+      <div class="topbar__actions">
+        <button type="button" class="topbar__btn" id="topbarCsvBtn">⇩ 設定をCSV出力</button>
+        <button type="button" class="topbar__btn" id="topbarPdfBtn">🖶 PDF出力（印刷）</button>
+        <button type="button" class="topbar__btn topbar__btn--ghost" id="resetBtn">⟳ デモデータをリセット</button>
+        <button type="button" class="topbar__btn topbar__btn--ghost" id="logoutBtn">⎋ ログアウト</button>
+      </div>
+    </header>
+
+    <main class="main-content" id="mainContent">
+      <!-- rendered by JavaScriptClient.html -->
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div id="printArea"></div>
+
+<?!= include('JavaScriptClient'); ?>
+</body>
+</html>
