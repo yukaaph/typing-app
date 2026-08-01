@@ -2,6 +2,20 @@
 
 `settings-checklist/`（localStorageのみで動く静的プロトタイプ）と同じ画面・機能を、Google Apps Script（GAS）+ Google Sheetsで動かす版です。認証（ログイン）とデータ保存をSheetsで行います。
 
+## デプロイ済み環境（clasp経由で作成）
+
+`irukattiw1@gmail.com` アカウントに、claspで以下を作成・push・デプロイ済みです。
+
+- Spreadsheet（DB）: https://docs.google.com/spreadsheets/d/1ToHBYOqGuPaUPE5cNSFaJp8-hTqeyrs-eCj7W_U2T78/edit
+- Apps Scriptエディタ: https://script.google.com/d/1LtF4iu-vZ6nSjAb1oBObFyjChY7pNYgMkDiD4mmDEn2L14qQs1nMkDn5/edit
+- Webアプリ（公開URL）: https://script.google.com/macros/s/AKfycbz_ZGNWFp709Irh1i3H17KtZ8RnBd1mLijpClm9QNwDbhzGBA7WU0MqxN-Bo00BQMBG/exec
+
+**残っている手作業が1つだけあります**：`clasp run` はGoogleアカウント個人設定（[script.google.com/home/usersettings](https://script.google.com/home/usersettings)でのApps Script API有効化）が必要で、CLIから自動化できませんでした。そのため `setupSpreadsheet()` の初回実行だけ、上記のApps Scriptエディタを開き、関数選択のプルダウンで `setupSpreadsheet` を選んで▶実行してください（初回は権限承認画面が出ます。「詳細」→「（プロジェクト名）に移動（安全ではないページ）」と進めば許可できます。これは個人検証用スクリプトなので毎回表示される想定内の警告です）。
+
+実行後、Webアプリの公開URLを開けば、デモアカウント（`customer-demo` / `staff-demo`、パスワードはどちらも `demo1234`）でログインできます。
+
+以降、コードを修正した場合は `settings-checklist-gas/` で `clasp push` すればこのプロジェクトに反映されます（`.clasp.json` が既にこのプロジェクトを指しています）。デプロイ済みURLに反映するには `clasp deploy` を再実行してください。
+
 ## 構成
 
 | ファイル | 役割 |
