@@ -1,9 +1,14 @@
 /**
- * ID/password auth backed by a "Users" sheet, with session tokens kept in
- * CacheService (max TTL 6 hours). This is a prototype-grade auth layer:
- * passwords are SHA-256 hashed (not salted/bcrypt), and there is no
- * lockout/throttling. It is not a substitute for a real auth provider,
- * but it is enough to demonstrate role-gated access without a database.
+ * Password-only auth, modeled on "share a link with a password" (e.g.
+ * SharePoint password-protected links): there is no separate username/ID.
+ * The password itself is the credential — each row in the "Users" sheet
+ * maps one issued password to a role + display name. Session tokens are
+ * kept in CacheService (max TTL 6 hours). This is a prototype-grade auth
+ * layer: passwords are SHA-256 hashed (not salted/bcrypt), and there is
+ * no lockout/throttling. It is not a substitute for a real auth provider,
+ * but is reasonable given each password is a high-entropy random secret
+ * (15 alphanumeric characters, issued per customer) rather than a
+ * user-chosen one.
  */
 
 var SESSION_TTL_SECONDS = 6 * 60 * 60; // CacheService max TTL is 6 hours
@@ -13,6 +18,17 @@ function hashPassword_(password) {
   return bytes.map(function (b) {
     return ('0' + (b & 0xFF).toString(16)).slice(-2);
   }).join('');
+}
+
+/** Generates a random alphanumeric password. Default length 15. */
+function generateRandomPassword_(length) {
+  length = length || 15;
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  var result = '';
+  for (var i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
 }
 
 function getUsersSheet_() {
@@ -25,14 +41,28 @@ function getUsersSheet_() {
 }
 
 /**
- * Called from the client login form.
- * Returns { ok, token, role, displayName, username } or { ok:false, message }.
+ * Issues a new password for the given role, stores its hash in the Users
+ * sheet, and returns the plaintext password. The plaintext is not stored
+ * anywhere — this is the only moment it exists, so the caller (an admin,
+ * via the issueCustomerAccessUi_ / issueStaffAccessUi_ menu items) must
+ * hand it to the recipient right away (e.g. paste it into the link/email
+ * sent to the municipality). Losing it means issuing a new one.
  */
-function login(username, password) {
-  username = String(username || '').trim();
+function issueAccessPassword_(role, displayName) {
+  var password = generateRandomPassword_(15);
+  var sheet = getUsersSheet_();
+  sheet.appendRow([hashPassword_(password), role, displayName, new Date()]);
+  return password;
+}
+
+/**
+ * Called from the client login form. Password-only: no username.
+ * Returns { ok, token, role, displayName } or { ok:false, message }.
+ */
+function login(password) {
   password = String(password || '');
-  if (!username || !password) {
-    return { ok: false, message: 'ユーザーIDとパスワードを入力してください。' };
+  if (!password) {
+    return { ok: false, message: 'パスワードを入力してください。' };
   }
 
   var sheet = getUsersSheet_();
@@ -41,22 +71,19 @@ function login(username, password) {
 
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
-    if (String(row[0]).trim() === username) {
-      if (String(row[1]) !== passwordHash) {
-        return { ok: false, message: 'ユーザーIDまたはパスワードが正しくありません。' };
-      }
-      var role = String(row[2]);
-      var displayName = String(row[3]);
+    if (String(row[0]) === passwordHash) {
+      var role = String(row[1]);
+      var displayName = String(row[2]);
       var token = Utilities.getUuid();
       CacheService.getScriptCache().put(
         'session:' + token,
-        JSON.stringify({ username: username, role: role, displayName: displayName }),
+        JSON.stringify({ role: role, displayName: displayName }),
         SESSION_TTL_SECONDS
       );
-      return { ok: true, token: token, role: role, displayName: displayName, username: username };
+      return { ok: true, token: token, role: role, displayName: displayName };
     }
   }
-  return { ok: false, message: 'ユーザーIDまたはパスワードが正しくありません。' };
+  return { ok: false, message: 'パスワードが正しくありません。' };
 }
 
 /** Called from the client logout button. */
@@ -67,7 +94,7 @@ function logout(token) {
   return { ok: true };
 }
 
-/** Returns { username, role, displayName } or null if the token is missing/expired. */
+/** Returns { role, displayName } or null if the token is missing/expired. */
 function getSession_(token) {
   if (!token) return null;
   var raw = CacheService.getScriptCache().get('session:' + token);

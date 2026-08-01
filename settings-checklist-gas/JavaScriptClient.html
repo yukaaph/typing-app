@@ -54,7 +54,7 @@
   var state = Object.assign(defaultOperationalState(), {
     mode: 'customer',
     activeSection: 'contract',
-    auth: { loggedIn: false, username: '', role: '', displayName: '', token: '' }
+    auth: { loggedIn: false, role: '', displayName: '', token: '' }
   });
 
   function getToken() {
@@ -121,6 +121,10 @@
   }
 
   // ---- Login screen ----
+  // Password-only, like a SharePoint password-protected link: there is no
+  // separate ID, the password itself identifies the role/recipient.
+  var DEMO_CUSTOMER_PASSWORD = 'demoCustomer123';
+  var DEMO_STAFF_PASSWORD = 'demoStaff123456';
 
   function renderLoginScreen(errorMsg) {
     loginScreen.innerHTML =
@@ -134,42 +138,36 @@
         '</div>' +
         (errorMsg ? '<div class="login-error">' + escapeHtml(errorMsg) + '</div>' : '') +
         '<div class="field-group">' +
-          '<div class="field-label">ユーザーID</div>' +
-          '<input type="text" id="loginUser" placeholder="例：customer-demo">' +
-        '</div>' +
-        '<div class="field-group">' +
           '<div class="field-label">パスワード</div>' +
-          '<input type="text" id="loginPass" placeholder="例：demo1234">' +
+          '<input type="password" id="loginPass" placeholder="発行されたパスワードを入力">' +
         '</div>' +
         '<button class="btn btn--primary" id="loginSubmitBtn">ログイン</button>' +
-        '<div class="login-divider">または、デモアカウントで試す</div>' +
+        '<div class="login-divider">または、デモパスワードで試す</div>' +
         '<div class="login-demo-buttons">' +
-          '<button class="btn btn--secondary btn--small" id="loginAsCustomerBtn">お客様としてログイン</button>' +
-          '<button class="btn btn--secondary btn--small" id="loginAsStaffBtn">社内担当者としてログイン</button>' +
+          '<button class="btn btn--secondary btn--small" id="loginAsCustomerBtn">お客様用デモでログイン</button>' +
+          '<button class="btn btn--secondary btn--small" id="loginAsStaffBtn">社内担当者用デモでログイン</button>' +
         '</div>' +
-        '<p class="login-note">このログインはGoogle Sheets上のUsersシートで管理しています。パスワードはSHA-256でハッシュ化して照合しますが、本番想定のセキュリティ対策（ソルト・多要素認証・ログイン試行制限等）は行っていません。</p>' +
+        '<p class="login-note">IDはなく、パスワードのみでログインします（発行時にパスワードごとに役割が紐づいています）。パスワードはSHA-256でハッシュ化して照合しますが、本番想定のセキュリティ対策（多要素認証・ログイン試行制限等）は行っていません。</p>' +
       '</div>';
 
-    var userInput = document.getElementById('loginUser');
     var passInput = document.getElementById('loginPass');
-    var submit = function () { doLogin(userInput.value.trim(), passInput.value.trim()); };
+    var submit = function () { doLogin(passInput.value.trim()); };
     document.getElementById('loginSubmitBtn').addEventListener('click', submit);
-    document.getElementById('loginAsCustomerBtn').addEventListener('click', function () { doLogin('customer-demo', 'demo1234'); });
-    document.getElementById('loginAsStaffBtn').addEventListener('click', function () { doLogin('staff-demo', 'demo1234'); });
-    [userInput, passInput].forEach(function (el) {
-      el.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') submit();
-      });
+    document.getElementById('loginAsCustomerBtn').addEventListener('click', function () { doLogin(DEMO_CUSTOMER_PASSWORD); });
+    document.getElementById('loginAsStaffBtn').addEventListener('click', function () { doLogin(DEMO_STAFF_PASSWORD); });
+    passInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') submit();
     });
+    passInput.focus();
   }
 
-  function doLogin(username, password) {
-    gasCall('login', username, password).then(function (res) {
+  function doLogin(password) {
+    gasCall('login', password).then(function (res) {
       if (!res.ok) {
         renderLoginScreen(res.message);
         return;
       }
-      state.auth = { loggedIn: true, username: res.username, role: res.role, displayName: res.displayName, token: res.token };
+      state.auth = { loggedIn: true, role: res.role, displayName: res.displayName, token: res.token };
       state.mode = res.role;
       setToken(res.token);
       return loadStateFromServer();
@@ -195,7 +193,7 @@
       renderApp();
     }).catch(function () {
       setToken('');
-      state.auth = { loggedIn: false, username: '', role: '', displayName: '', token: '' };
+      state.auth = { loggedIn: false, role: '', displayName: '', token: '' };
       renderApp();
       showToast('セッションの有効期限が切れました。再度ログインしてください。');
     });
@@ -788,7 +786,7 @@
   function renderUserChip() {
     var a = state.auth;
     var roleLabel = a.role === 'staff' ? '社内担当者' : 'お客様';
-    userChip.textContent = (a.displayName || a.username) + '（' + roleLabel + '）としてログイン中';
+    userChip.textContent = a.displayName + '（' + roleLabel + '）としてログイン中';
   }
 
   function renderSideNav() {
@@ -851,7 +849,7 @@
   logoutBtn.addEventListener('click', function () {
     gasCall('logout', state.auth.token).catch(function () {}).then(function () {
       setToken('');
-      state.auth = { loggedIn: false, username: '', role: '', displayName: '', token: '' };
+      state.auth = { loggedIn: false, role: '', displayName: '', token: '' };
       renderApp();
       showToast('ログアウトしました');
     });
@@ -874,7 +872,7 @@
       return;
     }
     gasCall('apiGetState', token).then(function (res) {
-      state.auth = { loggedIn: true, username: res.session.username, role: res.session.role, displayName: res.session.displayName, token: token };
+      state.auth = { loggedIn: true, role: res.session.role, displayName: res.session.displayName, token: token };
       state.mode = res.session.role;
       applyServerState(res.state);
       renderApp();
