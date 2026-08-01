@@ -10,7 +10,8 @@
     categories: '配信カテゴリ',
     tags: '配信タグ',
     autoDelivery: '自動配信設定',
-    overview: '提出内容確認'
+    overview: '提出内容確認',
+    help: '使い方'
   };
 
   var STATUS_LABEL = {
@@ -834,6 +835,61 @@
     });
   }
 
+  function renderHelpSection() {
+    mainContent.innerHTML =
+      '<h2 class="section-title">使い方</h2>' +
+      '<p class="section-desc">設定確認表 Webポータルの使い方をご案内します。お客様・社内担当者どちらの方も、必要な項目をお読みください。</p>' +
+
+      '<div class="help-role-section">' +
+        '<div class="help-role-badge help-role-badge--customer">お客様（自治体ご担当者）の方へ</div>' +
+        '<ol class="help-steps">' +
+          '<li>弊社からお送りしたリンクを開き、<strong>発行されたパスワード</strong>を入力してログインしてください。ユーザーIDの入力は不要です。</li>' +
+          '<li>ログイン後、左のメニューから「契約情報」→「メディア設定」→「組織設定」→「配信カテゴリ」→「配信タグ」→「自動配信設定」の順に内容をご確認・ご入力ください。「契約情報」は弊社担当者が設定した内容の確認のみで、編集はできません。</li>' +
+          '<li>項目名の横にある赤い「必須」バッジが付いた項目は、提出前に必ずご入力ください。</li>' +
+          '<li>各画面での変更は自動保存されません。入力後は必ず画面下部の「保存」ボタンを押してください。</li>' +
+          '<li>「組織設定」「配信カテゴリ」は階層構造で登録できます。「＋ルートを追加」で最上位の項目を、各項目の「＋子を追加」で下位の項目を追加できます。「編集」で名称変更、「削除」で配下ごと削除されます。</li>' +
+          '<li>「配信タグ」は階層のない一覧です。「＋タグ追加」で追加、各行の「削除」で削除できます。</li>' +
+          '<li>すべて入力できたら「提出内容確認」画面を開き、未入力の必須項目がないことを確認してから「提出する」を押してください。未入力がある場合はボタンが押せません。</li>' +
+          '<li>提出後はステータスが「提出済・確認待ち」になり、内容の編集はできなくなります。弊社担当者の確認をお待ちください。</li>' +
+          '<li>内容に不備があると「差し戻し」される場合があります。「提出内容確認」画面に表示されるコメントを確認のうえ、該当箇所を修正して再度提出してください。</li>' +
+          '<li>弊社担当者の確認が完了すると、ステータスが「確認完了」になり、一連の対応は終了です。</li>' +
+          '<li>パスワードが分からなくなった場合は、リンクをお送りした弊社担当者までご連絡ください（このページからの再発行はできません）。</li>' +
+        '</ol>' +
+      '</div>' +
+
+      '<div class="help-role-section">' +
+        '<div class="help-role-badge help-role-badge--staff">社内担当者の方へ</div>' +
+        '<ol class="help-steps">' +
+          '<li>発行されたパスワードでログインすると、まず「契約一覧」が表示されます。自治体名・契約ID・状態の一覧から、確認したい自治体の行にある「開く」を押してください。</li>' +
+          '<li>契約を開くと、その自治体の内容がすべて確認できます。「契約情報」画面では、自治体名／お客様名・契約プラン・契約開始日・弊社担当者名を編集できます（契約IDは変更できません）。メディア設定以降はお客様が入力する項目のため、閲覧のみです。</li>' +
+          '<li>お客様が提出すると、ステータスが「提出済・確認待ち」になります。「提出内容確認」画面を開き、内容に問題がなければ「確認完了にする」を、修正が必要な場合はコメントを入力して「差し戻す」を押してください（差し戻しにはコメントが必須です）。</li>' +
+          '<li>別の自治体を確認したいときは、左メニュー上部の「契約一覧」からいつでも一覧に戻れます。</li>' +
+          '<li>新しい自治体を登録する（＝お客様用パスワードを発行する）には、データ保管用のスプレッドシートを開き、メニュー「設定確認表 管理」→「お客様用パスワードを発行（自治体を新規登録）」から行ってください。表示名（自治体名）を入力すると、その自治体専用の契約とパスワードが自動で作成されます。社内担当者用のパスワードも同じメニューから発行できます。</li>' +
+          '<li>発行されたパスワードはその場に一度だけ表示されます。控えて、リンクと一緒にお客様へお伝えください（後から画面上で確認することはできません）。</li>' +
+        '</ol>' +
+      '</div>' +
+
+      '<div class="help-role-section">' +
+        '<div class="help-role-badge">共通操作</div>' +
+        '<ol class="help-steps">' +
+          '<li>「設定をCSV出力」で、現在開いている契約の全項目をCSVファイルとしてダウンロードできます（Excelでそのまま開けます）。</li>' +
+          '<li>「PDF出力（印刷）」で、同じ内容を印刷用レイアウトで表示し、ブラウザの印刷機能から「PDFに保存」できます。</li>' +
+          '<li>「デモデータをリセット」は、現在開いている契約の内容をすべて初期状態に戻します（ログイン状態はそのまま維持されます）。取り消せませんのでご注意ください。</li>' +
+          '<li>「ログアウト」で現在のセッションを終了します。再度利用する際は、同じパスワードで再ログインできます。</li>' +
+        '</ol>' +
+      '</div>' +
+
+      '<div class="help-role-section">' +
+        '<div class="help-role-badge">ステータスの意味</div>' +
+        '<dl class="help-faq">' +
+          '<dt>' + STATUS_LABEL.draft + '</dt><dd>お客様が入力中の状態です。まだ提出されていません。</dd>' +
+          '<dt>' + STATUS_LABEL.submitted + '</dt><dd>お客様が提出済みで、弊社担当者の確認待ちです。お客様側では編集できません。</dd>' +
+          '<dt>' + STATUS_LABEL.confirmed + '</dt><dd>弊社担当者の確認が完了した状態です。編集は行えません。</dd>' +
+          '<dt>' + STATUS_LABEL.rejected + '</dt><dd>弊社担当者により差し戻された状態です。お客様は内容を修正し、再提出できます。</dd>' +
+        '</dl>' +
+      '</div>';
+  }
+
   var SECTION_RENDERERS = {
     contractList: renderContractListSection,
     contract: renderContractSection,
@@ -842,7 +898,8 @@
     categories: function () { renderTreeSection('categories', '配信カテゴリ', 'カテゴリ'); },
     tags: renderTagsSection,
     autoDelivery: renderAutoDeliverySection,
-    overview: renderOverviewSection
+    overview: renderOverviewSection,
+    help: renderHelpSection
   };
 
   function renderStatusBadge() {
@@ -878,9 +935,10 @@
       if (state.activeContractId) {
         items = items.concat(['contract', 'media', 'organizations', 'categories', 'tags', 'autoDelivery', 'overview']);
       }
+      items.push('help');
       return items;
     }
-    return ['contract', 'media', 'organizations', 'categories', 'tags', 'autoDelivery', 'overview'];
+    return ['contract', 'media', 'organizations', 'categories', 'tags', 'autoDelivery', 'overview', 'help'];
   }
 
   function renderSideNav() {
@@ -891,7 +949,7 @@
     var sections = navSectionsForState();
     sideNav.innerHTML = sections.map(function (sec) {
       var mark = '';
-      var showChecks = sec !== 'overview' && sec !== 'contract' && sec !== 'contractList' &&
+      var showChecks = sec !== 'overview' && sec !== 'contract' && sec !== 'contractList' && sec !== 'help' &&
         state.mode === 'customer' && (state.status === 'draft' || state.status === 'rejected');
       if (showChecks) {
         mark = missingSections[sec]
