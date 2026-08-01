@@ -47,17 +47,22 @@ function getUsersSheet_() {
  * via the issueCustomerAccessUi_ / issueStaffAccessUi_ menu items) must
  * hand it to the recipient right away (e.g. paste it into the link/email
  * sent to the municipality). Losing it means issuing a new one.
+ *
+ * contractId ties a customer password to exactly one municipality's data.
+ * Pass '' for staff passwords, which get access to every contract (they
+ * pick which one to work on from the "契約一覧" screen).
  */
-function issueAccessPassword_(role, displayName) {
+function issueAccessPassword_(role, displayName, contractId) {
   var password = generateRandomPassword_(15);
   var sheet = getUsersSheet_();
-  sheet.appendRow([hashPassword_(password), role, displayName, new Date()]);
+  sheet.appendRow([hashPassword_(password), role, displayName, contractId || '', new Date()]);
   return password;
 }
 
 /**
  * Called from the client login form. Password-only: no username.
- * Returns { ok, token, role, displayName } or { ok:false, message }.
+ * Returns { ok, token, role, displayName, contractId } or { ok:false, message }.
+ * contractId is '' for staff (all-contract access).
  */
 function login(password) {
   password = String(password || '');
@@ -74,13 +79,14 @@ function login(password) {
     if (String(row[0]) === passwordHash) {
       var role = String(row[1]);
       var displayName = String(row[2]);
+      var contractId = String(row[3] || '');
       var token = Utilities.getUuid();
       CacheService.getScriptCache().put(
         'session:' + token,
-        JSON.stringify({ role: role, displayName: displayName }),
+        JSON.stringify({ role: role, displayName: displayName, contractId: contractId }),
         SESSION_TTL_SECONDS
       );
-      return { ok: true, token: token, role: role, displayName: displayName };
+      return { ok: true, token: token, role: role, displayName: displayName, contractId: contractId };
     }
   }
   return { ok: false, message: 'パスワードが正しくありません。' };
@@ -94,7 +100,7 @@ function logout(token) {
   return { ok: true };
 }
 
-/** Returns { role, displayName } or null if the token is missing/expired. */
+/** Returns { role, displayName, contractId } or null if the token is missing/expired. */
 function getSession_(token) {
   if (!token) return null;
   var raw = CacheService.getScriptCache().get('session:' + token);

@@ -3,6 +3,7 @@
   var TOKEN_KEY = 'settings-checklist-gas-token';
 
   var NAV_LABELS = {
+    contractList: '契約一覧',
     contract: '契約情報',
     media: 'メディア設定',
     organizations: '組織設定',
@@ -40,7 +41,7 @@
 
   function defaultOperationalState() {
     return {
-      contract: { contractId: '', plan: '', startDate: '', staffName: '' },
+      contract: { contractId: '', customerName: '', plan: '', startDate: '', staffName: '' },
       media: { managerName: '', managerEmail: '', fromEmail: '', lineToken: '' },
       organizations: [],
       categories: [],
@@ -54,7 +55,9 @@
   var state = Object.assign(defaultOperationalState(), {
     mode: 'customer',
     activeSection: 'contract',
-    auth: { loggedIn: false, role: '', displayName: '', token: '' }
+    activeContractId: null, // customer: always their own; staff: null until picked from 契約一覧
+    contractList: [],
+    auth: { loggedIn: false, role: '', displayName: '', token: '', contractId: '' }
   });
 
   function getToken() {
@@ -77,8 +80,10 @@
   }
 
   var mainContent = document.getElementById('mainContent');
+  var sideNav = document.getElementById('sideNav');
   var statusBadge = document.getElementById('statusBadge');
   var userChip = document.getElementById('userChip');
+  var topbarContractLabel = document.getElementById('topbarContractLabel');
   var toast = document.getElementById('toast');
   var resetBtn = document.getElementById('resetBtn');
   var logoutBtn = document.getElementById('logoutBtn');
@@ -167,12 +172,35 @@
         renderLoginScreen(res.message);
         return;
       }
-      state.auth = { loggedIn: true, role: res.role, displayName: res.displayName, token: res.token };
+      state.auth = { loggedIn: true, role: res.role, displayName: res.displayName, token: res.token, contractId: res.contractId || '' };
       state.mode = res.role;
       setToken(res.token);
-      return loadStateFromServer();
+      return afterAuthResolved();
     }).catch(function (err) {
       renderLoginScreen('サーバーエラー：' + errorMessage(err));
+    });
+  }
+
+  // Customers always land on their own (fixed) contract. Staff have no
+  // fixed contract — they land on the 契約一覧 list and pick one.
+  function afterAuthResolved() {
+    if (state.mode === 'customer') {
+      state.activeContractId = state.auth.contractId;
+      state.activeSection = 'contract';
+      return loadStateFromServer();
+    }
+    state.activeContractId = null;
+    state.activeSection = 'contractList';
+    return loadContractList();
+  }
+
+  function loadContractList() {
+    return gasCall('apiListContracts', state.auth.token).then(function (res) {
+      state.contractList = res.contracts;
+      renderApp();
+    }).catch(function (err) {
+      showToast('契約一覧の取得に失敗しました：' + errorMessage(err));
+      renderApp();
     });
   }
 
@@ -188,14 +216,16 @@
   }
 
   function loadStateFromServer() {
-    return gasCall('apiGetState', state.auth.token).then(function (res) {
+    return gasCall('apiGetState', state.auth.token, state.activeContractId).then(function (res) {
+      state.activeContractId = res.contractId;
       applyServerState(res.state);
       renderApp();
-    }).catch(function () {
+    }).catch(function (err) {
       setToken('');
-      state.auth = { loggedIn: false, role: '', displayName: '', token: '' };
+      state.auth = { loggedIn: false, role: '', displayName: '', token: '', contractId: '' };
+      state.activeContractId = null;
       renderApp();
-      showToast('セッションの有効期限が切れました。再度ログインしてください。');
+      showToast('セッションの有効期限が切れました。再度ログインしてください。' + (err ? '（' + errorMessage(err) + '）' : ''));
     });
   }
 
@@ -208,7 +238,7 @@
       tags: state.tags,
       autoDelivery: state.autoDelivery
     };
-    return gasCall('apiSaveState', state.auth.token, payload).then(function (res) {
+    return gasCall('apiSaveState', state.auth.token, state.activeContractId, payload).then(function (res) {
       applyServerState(res.state);
       render();
     }).catch(function (err) {
@@ -374,7 +404,8 @@
       mainContent.innerHTML =
         '<h2 class="section-title">契約情報</h2>' +
         '<p class="section-desc">弊社担当者が設定する契約情報です。お客様画面では閲覧のみとなります。</p>' +
-        '<div class="field-group"><div class="field-label">契約ID</div><input type="text" id="field-contractId" value="' + escapeHtml(c.contractId) + '"></div>' +
+        '<div class="field-group"><div class="field-label">契約ID</div><div class="readonly-value">' + escapeHtml(c.contractId) + '</div></div>' +
+        '<div class="field-group"><div class="field-label">自治体名／お客様名</div><input type="text" id="field-customerName" value="' + escapeHtml(c.customerName) + '"></div>' +
         '<div class="field-group">' +
           '<div class="field-label">契約プラン</div>' +
           '<div class="plan-cards" id="planCards">' +
@@ -399,17 +430,21 @@
       });
       document.getElementById('saveContractBtn').addEventListener('click', function () {
         var checkedPlan = mainContent.querySelector('input[name="plan"]:checked');
-        c.contractId = document.getElementById('field-contractId').value;
+        c.customerName = document.getElementById('field-customerName').value;
         c.plan = checkedPlan ? checkedPlan.value : c.plan;
         c.startDate = document.getElementById('field-startDate').value;
         c.staffName = document.getElementById('field-staffName').value;
-        pushStateToServer().then(function () { showToast('契約情報を保存しました'); });
+        pushStateToServer().then(function () {
+          showToast('契約情報を保存しました');
+          renderTopbarContext();
+        });
       });
     } else {
       mainContent.innerHTML =
         '<h2 class="section-title">契約情報</h2>' +
         '<p class="section-desc">こちらは弊社担当者が設定した契約情報です（閲覧のみ）。</p>' +
         '<div class="field-group"><div class="field-label">契約ID</div><div class="readonly-value">' + (escapeHtml(c.contractId) || '(未設定)') + '</div></div>' +
+        '<div class="field-group"><div class="field-label">自治体名／お客様名</div><div class="readonly-value">' + (escapeHtml(c.customerName) || '(未設定)') + '</div></div>' +
         '<div class="field-group"><div class="field-label">契約プラン</div><div class="readonly-value">' + (escapeHtml(c.plan) || '(未設定)') + '</div></div>' +
         '<div class="field-group"><div class="field-label">契約開始日</div><div class="readonly-value">' + (escapeHtml(c.startDate) || '(未設定)') + '</div></div>' +
         '<div class="field-group"><div class="field-label">弊社担当者</div><div class="readonly-value">' + (escapeHtml(c.staffName) || '(未設定)') + '</div></div>';
@@ -527,6 +562,7 @@
     var rows = [['分類', '項目', '内容']];
     var c = state.contract;
     rows.push(['契約情報', '契約ID', c.contractId]);
+    rows.push(['契約情報', '自治体名／お客様名', c.customerName]);
     rows.push(['契約情報', '契約プラン', c.plan]);
     rows.push(['契約情報', '契約開始日', c.startDate]);
     rows.push(['契約情報', '弊社担当者', c.staffName]);
@@ -597,6 +633,7 @@
       '<h2>契約情報</h2>' +
       '<table class="print-table">' +
         '<tr><th>契約ID</th><td>' + (escapeHtml(c.contractId) || '-') + '</td></tr>' +
+        '<tr><th>自治体名／お客様名</th><td>' + (escapeHtml(c.customerName) || '-') + '</td></tr>' +
         '<tr><th>契約プラン</th><td>' + (escapeHtml(c.plan) || '-') + '</td></tr>' +
         '<tr><th>契約開始日</th><td>' + (escapeHtml(c.startDate) || '-') + '</td></tr>' +
         '<tr><th>弊社担当者</th><td>' + (escapeHtml(c.staffName) || '-') + '</td></tr>' +
@@ -729,7 +766,7 @@
       var submitBtn = document.getElementById('submitBtn');
       if (submitBtn && !submitBtn.disabled) {
         submitBtn.addEventListener('click', function () {
-          gasCall('apiSubmit', state.auth.token).then(function (res) {
+          gasCall('apiSubmit', state.auth.token, state.activeContractId).then(function (res) {
             applyServerState(res.state);
             render();
             showToast('提出しました');
@@ -743,7 +780,7 @@
       var rejectBtn = document.getElementById('rejectBtn');
       if (confirmBtn) {
         confirmBtn.addEventListener('click', function () {
-          gasCall('apiConfirm', state.auth.token).then(function (res) {
+          gasCall('apiConfirm', state.auth.token, state.activeContractId).then(function (res) {
             applyServerState(res.state);
             render();
             showToast('確認完了にしました');
@@ -756,7 +793,7 @@
         rejectBtn.addEventListener('click', function () {
           var comment = document.getElementById('staffComment').value.trim();
           if (!comment) { showToast('差し戻しコメントを入力してください'); return; }
-          gasCall('apiReject', state.auth.token, comment).then(function (res) {
+          gasCall('apiReject', state.auth.token, state.activeContractId, comment).then(function (res) {
             applyServerState(res.state);
             render();
             showToast('差し戻しました');
@@ -768,7 +805,37 @@
     }
   }
 
+  function renderContractListSection() {
+    var rows = state.contractList.length
+      ? state.contractList.map(function (c) {
+          return '<tr>' +
+            '<td>' + (escapeHtml(c.customerName) || '(未設定)') + '</td>' +
+            '<td>' + escapeHtml(c.contractId) + '</td>' +
+            '<td>' + escapeHtml(STATUS_LABEL[c.status] || c.status) + '</td>' +
+            '<td><button class="btn btn--secondary btn--small" data-contract-id="' + escapeHtml(c.contractId) + '">開く</button></td>' +
+          '</tr>';
+        }).join('')
+      : '<tr><td colspan="4" class="table-empty">まだ契約が登録されていません。スプレッドシートのメニュー「設定確認表 管理」から発行してください。</td></tr>';
+
+    mainContent.innerHTML =
+      '<h2 class="section-title">契約一覧</h2>' +
+      '<p class="section-desc">確認・対応する自治体の契約を選択してください。</p>' +
+      '<table class="repeat-table">' +
+        '<thead><tr><th>自治体名</th><th>契約ID</th><th>状態</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+
+    mainContent.querySelectorAll('[data-contract-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.activeContractId = btn.dataset.contractId;
+        state.activeSection = 'contract';
+        loadStateFromServer();
+      });
+    });
+  }
+
   var SECTION_RENDERERS = {
+    contractList: renderContractListSection,
     contract: renderContractSection,
     media: renderMediaSection,
     organizations: function () { renderTreeSection('organizations', '組織設定', '組織'); },
@@ -779,6 +846,11 @@
   };
 
   function renderStatusBadge() {
+    if (state.mode === 'staff' && !state.activeContractId) {
+      statusBadge.style.display = 'none';
+      return;
+    }
+    statusBadge.style.display = '';
     statusBadge.textContent = STATUS_LABEL[state.status];
     statusBadge.dataset.status = state.status;
   }
@@ -789,27 +861,66 @@
     userChip.textContent = a.displayName + '（' + roleLabel + '）としてログイン中';
   }
 
+  function renderTopbarContext() {
+    if (state.mode === 'staff' && !state.activeContractId) {
+      topbarContractLabel.textContent = '契約を選択してください';
+      return;
+    }
+    var name = state.contract.customerName || '(自治体名未設定)';
+    topbarContractLabel.textContent = '対象契約：' + name + '（' + state.contract.contractId + '）';
+  }
+
+  // Which nav items are available depends on role and whether a contract
+  // has been picked yet (staff must pick one from 契約一覧 first).
+  function navSectionsForState() {
+    if (state.mode === 'staff') {
+      var items = ['contractList'];
+      if (state.activeContractId) {
+        items = items.concat(['contract', 'media', 'organizations', 'categories', 'tags', 'autoDelivery', 'overview']);
+      }
+      return items;
+    }
+    return ['contract', 'media', 'organizations', 'categories', 'tags', 'autoDelivery', 'overview'];
+  }
+
   function renderSideNav() {
-    var missing = validate();
+    var missing = state.activeContractId ? validate() : [];
     var missingSections = {};
     missing.forEach(function (m) { missingSections[m.section] = true; });
-    document.querySelectorAll('.side-nav__item').forEach(function (btn) {
-      var sec = btn.dataset.section;
-      btn.classList.toggle('is-active', sec === state.activeSection);
+
+    var sections = navSectionsForState();
+    sideNav.innerHTML = sections.map(function (sec) {
       var mark = '';
-      var showChecks = state.mode === 'customer' && (state.status === 'draft' || state.status === 'rejected') && sec !== 'overview' && sec !== 'contract';
+      var showChecks = sec !== 'overview' && sec !== 'contract' && sec !== 'contractList' &&
+        state.mode === 'customer' && (state.status === 'draft' || state.status === 'rejected');
       if (showChecks) {
         mark = missingSections[sec]
           ? ' <span class="nav-check" style="color:var(--color-danger)">・</span>'
           : ' <span class="nav-check" style="color:var(--color-success)">✓</span>';
       }
-      btn.innerHTML = NAV_LABELS[sec] + mark;
+      var activeClass = sec === state.activeSection ? ' is-active' : '';
+      return '<button type="button" class="side-nav__item' + activeClass + '" data-section="' + sec + '">' + NAV_LABELS[sec] + mark + '</button>';
+    }).join('');
+
+    sideNav.querySelectorAll('.side-nav__item').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var sec = btn.dataset.section;
+        if (sec === 'contractList') {
+          state.activeSection = 'contractList';
+          state.activeContractId = null;
+          loadContractList();
+          return;
+        }
+        state.activeSection = sec;
+        render();
+      });
     });
   }
 
   function render() {
     renderStatusBadge();
     renderUserChip();
+    renderTopbarContext();
     renderSideNav();
     var fn = SECTION_RENDERERS[state.activeSection];
     if (fn) fn();
@@ -828,16 +939,13 @@
     render();
   }
 
-  document.querySelectorAll('.side-nav__item').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      state.activeSection = btn.dataset.section;
-      render();
-    });
-  });
-
   resetBtn.addEventListener('click', function () {
-    if (!confirm('お客様・社内担当者で共有しているデモの設定データを初期状態に戻します（ログアウトはされません）。よろしいですか？')) return;
-    gasCall('apiResetDemo', state.auth.token).then(function (res) {
+    if (!state.activeContractId) {
+      showToast('先に契約一覧から契約を選択してください');
+      return;
+    }
+    if (!confirm('この契約の設定データを初期状態に戻します（ログアウトはされません）。よろしいですか？')) return;
+    gasCall('apiResetDemo', state.auth.token, state.activeContractId).then(function (res) {
       applyServerState(res.state);
       render();
       showToast('リセットしました');
@@ -849,18 +957,27 @@
   logoutBtn.addEventListener('click', function () {
     gasCall('logout', state.auth.token).catch(function () {}).then(function () {
       setToken('');
-      state.auth = { loggedIn: false, role: '', displayName: '', token: '' };
+      state.auth = { loggedIn: false, role: '', displayName: '', token: '', contractId: '' };
+      state.activeContractId = null;
       renderApp();
       showToast('ログアウトしました');
     });
   });
 
   document.getElementById('topbarCsvBtn').addEventListener('click', function () {
+    if (!state.activeContractId) {
+      showToast('先に契約一覧から契約を選択してください');
+      return;
+    }
     downloadCsv();
     showToast('CSVを出力しました');
   });
 
   document.getElementById('topbarPdfBtn').addEventListener('click', function () {
+    if (!state.activeContractId) {
+      showToast('先に契約一覧から契約を選択してください');
+      return;
+    }
     printPdf();
   });
 
@@ -871,11 +988,10 @@
       renderApp();
       return;
     }
-    gasCall('apiGetState', token).then(function (res) {
-      state.auth = { loggedIn: true, role: res.session.role, displayName: res.session.displayName, token: token };
+    gasCall('apiWhoAmI', token).then(function (res) {
+      state.auth = { loggedIn: true, role: res.session.role, displayName: res.session.displayName, token: token, contractId: res.session.contractId || '' };
       state.mode = res.session.role;
-      applyServerState(res.state);
-      renderApp();
+      return afterAuthResolved();
     }).catch(function () {
       setToken('');
       renderApp();
